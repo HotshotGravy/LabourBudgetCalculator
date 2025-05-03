@@ -71,21 +71,7 @@ namespace LabourBudgetCalculator
                 }
             }
 
-            this.btnReset = new Button
-            {
-                Name = "btnReset",
-                Text = "Reset",
-                Location = new Point(650, 300), // Adjust position as needed
-                Size = new Size(100, 30)
-            };
-
-            groupBoxResults.Controls.Add(btnReset);
-            // Find the Reset button and anchor it
-            btnReset = (Button)Controls.Find("btnReset", true)[0];
-            if (btnReset != null)
-            {
-                btnReset.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-            }
+            
         }
         private void SetupUI()
         {
@@ -116,7 +102,7 @@ namespace LabourBudgetCalculator
                 Name = "groupBoxRates",
                 Text = "Rates",
                 Location = new Point(25, 25),  // More spacing
-                Size = new Size(420, 260)   // Changed from 200 to 220
+                Size = new Size(420, 180)   // Changed from 200 to 220
             };
             this.Controls.Add(groupBoxRates);
 
@@ -275,7 +261,7 @@ namespace LabourBudgetCalculator
     });
         }
 
-        
+
         private void CreateTravelSection()
         {
             // Create Travel Options Section
@@ -283,7 +269,7 @@ namespace LabourBudgetCalculator
             {
                 Name = "groupBoxTravel",
                 Text = "Travel Options",
-                Location = new Point(25, 300),
+                Location = new Point(25, 215), // Changed from 300 to 220 (moved up 80 points)
                 Size = new Size(420, 260)
             };
             this.Controls.Add(groupBoxTravel);
@@ -353,17 +339,15 @@ namespace LabourBudgetCalculator
             };
             Label lblDailyTravelTimeUnit = new Label { Text = "Hours", Location = new Point(335, 180), AutoSize = true };
 
-
-
             // Add controls to groupBoxTravel
             groupBoxTravel.Controls.AddRange(new Control[] {
-                lblSeparateTravel, chkSeparateTravelTo, chkSeparateTravelFrom,
-                lblTravelMethod, comboBoxTravelMethod,
-                lblTravelDistance, numTravelDistance, lblTravelDistanceUnit,
-                lblTravelTime, numTravelTime, lblTravelTimeUnit,
-                lblDailyTravelDistance, numDailyTravelDistance, lblDailyTravelDistanceUnit,
-                lblDailyTravelTime, numDailyTravelTime, lblDailyTravelTimeUnit
-            });
+        lblSeparateTravel, chkSeparateTravelTo, chkSeparateTravelFrom,
+        lblTravelMethod, comboBoxTravelMethod,
+        lblTravelDistance, numTravelDistance, lblTravelDistanceUnit,
+        lblTravelTime, numTravelTime, lblTravelTimeUnit,
+        lblDailyTravelDistance, numDailyTravelDistance, lblDailyTravelDistanceUnit,
+        lblDailyTravelTime, numDailyTravelTime, lblDailyTravelTimeUnit
+    });
         }
 
         private void CreateExpensesSection()
@@ -373,7 +357,7 @@ namespace LabourBudgetCalculator
             {
                 Name = "groupBoxExpenses",
                 Text = "Expenses",
-                Location = new Point(25, 580),
+                Location = new Point(25, 500),
                 Size = new Size(420, 260)
             };
             this.Controls.Add(groupBoxExpenses);
@@ -445,15 +429,38 @@ namespace LabourBudgetCalculator
                 Size = new Size(150, 25)
             };
 
-            // Add controls to groupBoxExpenses
+            // Reset button - positioned to the right of Setup button
+            btnReset = new Button
+            {
+                Name = "btnReset",
+                Text = "Reset",
+                Location = new Point(180, 190), // Position it right after the Setup button
+                Size = new Size(100, 25)
+            };
+
+            // Add the reset button click handler
+            btnReset.Click += (sender, e) =>
+            {
+                DialogResult result = MessageBox.Show(
+                    "Are you sure you want to reset all values to default?",
+                    "Confirm Reset",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+                if (result == DialogResult.Yes)
+                {
+                    ResetForm();
+                }
+            };
+
+            // Add controls to groupBoxExpenses including btnReset
             groupBoxExpenses.Controls.AddRange(new Control[] {
-                lblFlightCost, numFlightCost, lblFlightCostUnit,
-                chkRentalCar, lblDailyCost, numRentalCarCost, lblRentalCarCostUnit,
-                lblHotelCost, numHotelCost, lblHotelCostUnit,
-                lblMileageRate, numMileageRate, lblMileageRateUnit,
-                lblPerDiem, numPerDiem, lblPerDiemUnit,
-                btnSetup
-            });
+        lblFlightCost, numFlightCost, lblFlightCostUnit,
+        chkRentalCar, lblDailyCost, numRentalCarCost, lblRentalCarCostUnit,
+        lblHotelCost, numHotelCost, lblHotelCostUnit,
+        lblMileageRate, numMileageRate, lblMileageRateUnit,
+        lblPerDiem, numPerDiem, lblPerDiemUnit,
+        btnSetup, btnReset // Include btnReset in the controls
+    });
         }
 
         private void CreateCalendarSection()
@@ -833,22 +840,7 @@ namespace LabourBudgetCalculator
             grandTotalPanel.Controls.Add(lblGrandTotal);
 
        
-            // Add event handler for reset button
- 
-            {
-                DialogResult result = MessageBox.Show(
-                    "Are you sure you want to reset all values to default?",
-                    "Confirm Reset",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Question);
-                if (result == DialogResult.Yes)
-                {
-                    ResetForm();
-                }
-            };
-
-            // Add button directly to the form
-            this.Controls.Add(btnReset);
+            
         }
 
 
@@ -1250,26 +1242,7 @@ namespace LabourBudgetCalculator
                     };
                 }
 
-                // Reset button
-                Control[] resetControls = Controls.Find("btnReset", true);
-                if (resetControls.Length > 0 && resetControls[0] is Button)
-                {
-                    Button btnReset = (Button)resetControls[0];
-                    btnReset.Click += (sender, e) =>
-                    {
-                        // Confirm reset with user
-                        DialogResult result = MessageBox.Show(
-                            "Are you sure you want to reset all values to default?",
-                            "Confirm Reset",
-                            MessageBoxButtons.YesNo,
-                            MessageBoxIcon.Question);
-
-                        if (result == DialogResult.Yes)
-                        {
-                            ResetForm();
-                        }
-                    };
-                }
+          
 
                 // Additional event handlers for schedule updates
                 SetupAdditionalEventHandlers();
