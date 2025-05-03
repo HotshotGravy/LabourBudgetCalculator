@@ -497,7 +497,7 @@ namespace LabourBudgetCalculator
                 Name = "btnDarkMode",
                 Text = "",
                 Location = new Point(290, 190), // Position it right after Reset button
-                Size = new Size(7, 25),
+                Size = new Size(9, 25),
                 BackColor = Color.DarkGray
             };
 
@@ -846,9 +846,9 @@ namespace LabourBudgetCalculator
             {
                 Name = "lblTotalDaysValue",
                 Text = "0",
-                Location = new Point(120, 290),
-                Size = new Size(40, 20),
-                Font = new Font(this.Font, FontStyle.Bold)
+                Location = new Point(155, 288),
+                Size = new Size(40, 25),
+                Font = new Font(this.Font.FontFamily, 18, FontStyle.Bold) // Increased from original size
             };
             groupBoxResults.Controls.Add(lblTotalDaysValue);
 
@@ -856,7 +856,8 @@ namespace LabourBudgetCalculator
             {
                 Text = "Total Days:",
                 Location = new Point(40, 290),
-                AutoSize = true
+                AutoSize = true,
+                Font = new Font(this.Font.FontFamily, 14, FontStyle.Bold) // Added font size here
             };
             groupBoxResults.Controls.Add(lblTotalDays);
 
@@ -1045,19 +1046,40 @@ namespace LabourBudgetCalculator
                 }
 
                 // Update each active day panel
+                // Update each active day panel
                 for (int i = 0; i < totalDays; i++)
                 {
                     try
                     {
                         Panel dayPanel = (Panel)Controls.Find($"dayPanel{i + 1}", true)[0];
+
+                        // Find all labels in the day panel
+                        foreach (Control control in dayPanel.Controls)
+                        {
+                            if (control is Label)
+                            {
+                                // Make ALL labels in day panels transparent
+                                control.BackColor = Color.Transparent;
+
+                                // Set text color to white in dark mode
+                                if (isDarkMode)
+                                {
+                                    control.ForeColor = Color.White;
+                                }
+                            }
+                        }
+
                         Label dayOfWeekLabel = (Label)dayPanel.Controls.Find($"dayOfWeekLabel{i + 1}", false)[0];
                         Label laborHoursLabel = (Label)dayPanel.Controls.Find($"laborHoursLabel{i + 1}", false)[0];
                         Label travelHoursLabel = (Label)dayPanel.Controls.Find($"travelHoursLabel{i + 1}", false)[0];
+                        Label dayNumLabel = (Label)dayPanel.Controls.Find($"dayNumLabel{i + 1}", false)[0];
 
-                        // Make label backgrounds transparent
-                        dayOfWeekLabel.BackColor = Color.Transparent;
-                        laborHoursLabel.BackColor = Color.Transparent;
-                        travelHoursLabel.BackColor = Color.Transparent;
+                        // Ensure day number label is transparent too
+                        dayNumLabel.BackColor = Color.Transparent;
+                        if (isDarkMode)
+                        {
+                            dayNumLabel.ForeColor = Color.White;
+                        }
 
                         // Calculate the day of week
                         int dayIndex = (startDayIndex + i) % 7;
@@ -1074,10 +1096,6 @@ namespace LabourBudgetCalculator
                             dayOfWeekLabel.ForeColor = isDarkMode ? Color.White : SystemColors.ControlText;
                             dayOfWeekLabel.Font = weekdayFont;
                         }
-
-                        // Set other labels' text color
-                        laborHoursLabel.ForeColor = isDarkMode ? Color.White : SystemColors.ControlText;
-                        travelHoursLabel.ForeColor = isDarkMode ? Color.White : SystemColors.ControlText;
 
                         // Skip days that are manually set
                         if (dayPanel.Tag.ToString() == "manual")
