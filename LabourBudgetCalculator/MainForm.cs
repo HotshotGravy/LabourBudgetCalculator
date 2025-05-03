@@ -15,30 +15,78 @@ namespace LabourBudgetCalculator
 {
     public partial class MainForm : Form
     {
+
         private List<RateSheet> rateSheets;
         private RateSheet currentRateSheet;
-
-        // Add these at the class level    
         private Label lblGrandTotalSection;
         private Label lblGrandTotal;
         private DataGridView dataGridViewDays;
-        private Label lblTotalDays, lblTotalDaysValue, lblLabourSection, lblLabourHours, lblLabourHoursValue;
-        private Label lblLabourCost, lblLabourCostValue, lblTravelSection, lblTravelHours, lblTravelHoursValue;
-        private Label lblTravelCost, lblTravelCostValue, lblExpensesSection, lblExpensesCost, lblExpensesCostValue;
-        // private Label lblGrandTotalSection, lblGrandTotal;
+        private Label lblTotalDaysValue, lblLabourHoursValue;
+        private Label lblLabourCostValue, lblTravelHoursValue;
+        private Label lblTravelCostValue, lblExpensesCostValue;
+        private ToolTip toolTip;
+        private Button btnReset;
+
+
+
 
         public MainForm()
         {
-            InitializeComponent();  
+            InitializeComponent();
+            this.Load += MainForm_Load;
+
             this.Size = new Size(1438, 920);
             this.Text = "Time & Expense Calculator";
             this.StartPosition = FormStartPosition.CenterScreen;
 
             SetupUI();
-            
+
             LoadData();
         }
 
+
+        private void MainForm_Load(object sender, EventArgs e)
+        {
+            // Set minimum size to ensure all controls are visible
+            this.MinimumSize = new Size(1000, 750);
+
+            // Make the form resizable
+            this.FormBorderStyle = FormBorderStyle.Sizable;
+
+            // Add anchoring to key controls
+            GroupBox groupBoxResults = (GroupBox)Controls.Find("groupBoxResults", true)[0];
+            groupBoxResults.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
+
+            DataGridView dataGridViewDays = (DataGridView)Controls.Find("dataGridViewDays", true)[0];
+            dataGridViewDays.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+
+            // Find the Grand Total panel we created and set its anchoring
+            foreach (Control control in groupBoxResults.Controls)
+            {
+                if (control is Panel && control.Contains(lblGrandTotal))
+                {
+                    // Anchor the Grand Total panel to the right side
+                    control.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+                    break;
+                }
+            }
+
+            this.btnReset = new Button
+            {
+                Name = "btnReset",
+                Text = "Reset",
+                Location = new Point(650, 300), // Adjust position as needed
+                Size = new Size(100, 30)
+            };
+
+            groupBoxResults.Controls.Add(btnReset);
+            // Find the Reset button and anchor it
+            btnReset = (Button)Controls.Find("btnReset", true)[0];
+            if (btnReset != null)
+            {
+                btnReset.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            }
+        }
         private void SetupUI()
         {
             // Set form properties
@@ -53,8 +101,12 @@ namespace LabourBudgetCalculator
             CreateCalendarSection();
             CreateResultsSection();
 
+            EnhanceVisualAppearance();
+
             // Setup event handlers
             SetupEventHandlers();
+            SetupTravelTimeDistanceLink();
+            SetupTooltips();
         }
 
         private void CreateRatesSection()
@@ -89,14 +141,14 @@ namespace LabourBudgetCalculator
                 Minimum = 0,
                 Value = 0
             };
-            Label lblPercentage = new Label { Text = "%", Location = new Point(165, 50), AutoSize = true };
+            Label lblPercentage = new Label { Text = "%", Location = new Point(181, 50), AutoSize = true };
 
             // Emergency checkbox
             CheckBox chkEmergency = new CheckBox
             {
                 Name = "chkEmergency",
                 Text = "Emergency",
-                Location = new Point(20, 75),
+                Location = new Point(220, 50),
                 AutoSize = true
             };
 
@@ -104,23 +156,23 @@ namespace LabourBudgetCalculator
             Label lblRegularLabour = new Label { Text = "Regular Labour", Location = new Point(20, 100), AutoSize = true };
             Label lblOvertimeLabour = new Label { Text = "Overtime Labour", Location = new Point(20, 125), AutoSize = true };
             Label lblPremiumLabour = new Label { Text = "Premium Labour", Location = new Point(20, 150), AutoSize = true };
-            Label lblRegularTravel = new Label { Text = "Regular Travel", Location = new Point(20, 175), AutoSize = true };
-            Label lblOvertimeTravel = new Label { Text = "Overtime Travel", Location = new Point(20, 200), AutoSize = true };
-            Label lblPremiumTravel = new Label { Text = "Premium Travel", Location = new Point(20, 225), AutoSize = true };
+            Label lblRegularTravel = new Label { Text = "Regular Travel", Location = new Point(220, 100), AutoSize = true };
+            Label lblOvertimeTravel = new Label { Text = "Overtime Travel", Location = new Point(220, 125), AutoSize = true };
+            Label lblPremiumTravel = new Label { Text = "Premium Travel", Location = new Point(220, 150), AutoSize = true };
 
             TextBox txtRegularLabour = new TextBox { Name = "txtRegularLabour", Location = new Point(120, 97), Size = new Size(60, 25), ReadOnly = true };
             TextBox txtOvertimeLabour = new TextBox { Name = "txtOvertimeLabour", Location = new Point(120, 122), Size = new Size(60, 25), ReadOnly = true };
             TextBox txtPremiumLabour = new TextBox { Name = "txtPremiumLabour", Location = new Point(120, 147), Size = new Size(60, 25), ReadOnly = true };
-            TextBox txtRegularTravel = new TextBox { Name = "txtRegularTravel", Location = new Point(120, 172), Size = new Size(60, 25), ReadOnly = true };
-            TextBox txtOvertimeTravel = new TextBox { Name = "txtOvertimeTravel", Location = new Point(120, 197), Size = new Size(60, 25), ReadOnly = true };
-            TextBox txtPremiumTravel = new TextBox { Name = "txtPremiumTravel", Location = new Point(120, 222), Size = new Size(60, 25), ReadOnly = true };
+            TextBox txtRegularTravel = new TextBox { Name = "txtRegularTravel", Location = new Point(320, 97), Size = new Size(60, 25), ReadOnly = true };
+            TextBox txtOvertimeTravel = new TextBox { Name = "txtOvertimeTravel", Location = new Point(320, 122), Size = new Size(60, 25), ReadOnly = true };
+            TextBox txtPremiumTravel = new TextBox { Name = "txtPremiumTravel", Location = new Point(320, 147), Size = new Size(60, 25), ReadOnly = true };
 
             Label lblHr1 = new Label { Text = "/hr.", Location = new Point(181, 100), AutoSize = true };
             Label lblHr2 = new Label { Text = "/hr.", Location = new Point(181, 125), AutoSize = true };
             Label lblHr3 = new Label { Text = "/hr.", Location = new Point(181, 150), AutoSize = true };
-            Label lblHr4 = new Label { Text = "/hr.", Location = new Point(181, 175), AutoSize = true };
-            Label lblHr5 = new Label { Text = "/hr.", Location = new Point(181, 200), AutoSize = true };
-            Label lblHr6 = new Label { Text = "/hr.", Location = new Point(181, 225), AutoSize = true };
+            Label lblHr4 = new Label { Text = "/hr.", Location = new Point(381, 100), AutoSize = true };
+            Label lblHr5 = new Label { Text = "/hr.", Location = new Point(381, 125), AutoSize = true };
+            Label lblHr6 = new Label { Text = "/hr.", Location = new Point(381, 150), AutoSize = true };
 
             // Add all controls to the group box
             groupBoxRates.Controls.AddRange(new Control[] {
@@ -238,16 +290,16 @@ namespace LabourBudgetCalculator
 
             // Separate Travel Day checkboxes
             Label lblSeparateTravel = new Label { Text = "Separate Travel Day", Location = new Point(20, 30), AutoSize = true };
-            CheckBox chkSeparateTravelTo = new CheckBox { Name = "chkSeparateTravelTo", Text = "To", Location = new Point(220, 30), AutoSize = true };
-            CheckBox chkSeparateTravelFrom = new CheckBox { Name = "chkSeparateTravelFrom", Text = "From", Location = new Point(260, 30), AutoSize = true };
+            CheckBox chkSeparateTravelTo = new CheckBox { Name = "chkSeparateTravelTo", Text = "To", Location = new Point(255, 30), AutoSize = true };
+            CheckBox chkSeparateTravelFrom = new CheckBox { Name = "chkSeparateTravelFrom", Text = "From", Location = new Point(295, 30), AutoSize = true };
 
             // Travel Method
             Label lblTravelMethod = new Label { Text = "Travel Method to Site Area:", Location = new Point(20, 60), AutoSize = true };
             ComboBox comboBoxTravelMethod = new ComboBox
             {
                 Name = "comboBoxTravelMethod",
-                Location = new Point(180, 57),
-                Size = new Size(150, 25),
+                Location = new Point(255, 57),
+                Size = new Size(75, 25),
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
 
@@ -256,8 +308,8 @@ namespace LabourBudgetCalculator
             NumericUpDown numTravelDistance = new NumericUpDown
             {
                 Name = "numTravelDistance",
-                Location = new Point(250, 87),
-                Size = new Size(80, 25),
+                Location = new Point(255, 87),
+                Size = new Size(75, 25),
                 Maximum = 10000
             };
             Label lblTravelDistanceUnit = new Label { Text = "Miles", Location = new Point(335, 90), AutoSize = true };
@@ -267,8 +319,8 @@ namespace LabourBudgetCalculator
             NumericUpDown numTravelTime = new NumericUpDown
             {
                 Name = "numTravelTime",
-                Location = new Point(250, 117),
-                Size = new Size(80, 25),
+                Location = new Point(255, 117),
+                Size = new Size(75, 25),
                 Maximum = 48,
                 Increment = 0.5m,
                 DecimalPlaces = 1
@@ -276,24 +328,25 @@ namespace LabourBudgetCalculator
             Label lblTravelTimeUnit = new Label { Text = "Hours", Location = new Point(335, 120), AutoSize = true };
 
             // Daily Travel Distance
-            Label lblDailyTravelDistance = new Label { Text = "Daily Travel Distance:", Location = new Point(20, 150), AutoSize = true };
+            Label lblDailyTravelDistance = new Label { Text = "Daily Travel Distance (Round Trip):", Location = new Point(20, 150), AutoSize = true };
 
             NumericUpDown numDailyTravelDistance = new NumericUpDown
             {
                 Name = "numDailyTravelDistance",
-                Location = new Point(250, 147),
-                Size = new Size(80, 25),
-                Maximum = 1000
+                Location = new Point(255, 147),
+                Size = new Size(75, 25),
+                Maximum = 1000,
+                Increment = 30m
             };
             Label lblDailyTravelDistanceUnit = new Label { Text = "Miles", Location = new Point(335, 150), AutoSize = true };
 
             // Daily Travel Time
-            Label lblDailyTravelTime = new Label { Text = "Daily Travel Time:", Location = new Point(20, 180), AutoSize = true };
+            Label lblDailyTravelTime = new Label { Text = "Daily Travel Time (Round Trip):", Location = new Point(20, 180), AutoSize = true };
             NumericUpDown numDailyTravelTime = new NumericUpDown
             {
                 Name = "numDailyTravelTime",
-                Location = new Point(250, 177),
-                Size = new Size(80, 25),
+                Location = new Point(255, 177),
+                Size = new Size(75, 25),
                 Maximum = 24,
                 Increment = 0.5m,   // Add this line
                 DecimalPlaces = 1
@@ -338,15 +391,15 @@ namespace LabourBudgetCalculator
 
             // Rental Car
             CheckBox chkRentalCar = new CheckBox { Name = "chkRentalCar", Text = "Rental Car", Location = new Point(20, 60), AutoSize = true };
-            Label lblDailyCost = new Label { Text = "Daily Cost:", Location = new Point(150, 60), AutoSize = true };
+            Label lblDailyCost = new Label { Text = "Daily Cost:", Location = new Point(110, 60), AutoSize = true };
             NumericUpDown numRentalCarCost = new NumericUpDown
             {
                 Name = "numRentalCarCost",
-                Location = new Point(220, 57),
+                Location = new Point(170, 57),
                 Size = new Size(80, 25),
                 Maximum = 500
             };
-            Label lblRentalCarCostUnit = new Label { Text = "USD", Location = new Point(305, 60), AutoSize = true };
+            Label lblRentalCarCostUnit = new Label { Text = "USD", Location = new Point(255, 60), AutoSize = true };
 
             // Hotel Cost
             Label lblHotelCost = new Label { Text = "Hotel Cost:", Location = new Point(20, 90), AutoSize = true };
@@ -548,8 +601,9 @@ namespace LabourBudgetCalculator
             {
                 Name = "groupBoxResults",
                 Text = "Results",
-                Location = new Point(460, 445), // Adjusted from 450 to 445 to match new schedule position
-                Size = new Size(880, 440)
+                Location = new Point(460, 445),
+                Size = new Size(880, 350), // Reduced height for better visibility
+                Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right
             };
             this.Controls.Add(groupBoxResults);
 
@@ -560,146 +614,244 @@ namespace LabourBudgetCalculator
                 Location = new Point(20, 30),
                 Size = new Size(760, 160),
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                ReadOnly = true
+                ReadOnly = true,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
             groupBoxResults.Controls.Add(dataGridViewDays);
 
-            // Total Days
-            lblTotalDays = new Label
+            // Create table layout directly on the group box
+            // Start with the horizontal lines
+            Panel topLine = new Panel
             {
-                Text = "Total Days:",
-                Location = new Point(20, 200),
-                AutoSize = true
+                Location = new Point(30, 210),
+                Size = new Size(470, 1),
+                BorderStyle = BorderStyle.FixedSingle
             };
-            lblTotalDaysValue = new Label
-            {
-                Name = "lblTotalDaysValue",
-                Text = "0",
-                Location = new Point(150, 200),
-                Size = new Size(40, 20),
-                Font = new Font(this.Font, FontStyle.Bold)
-            };
+            groupBoxResults.Controls.Add(topLine);
 
-            // Labour section
-            lblLabourSection = new Label
+            Panel headerLine = new Panel
+            {
+                Location = new Point(30, 235),
+                Size = new Size(470, 1),
+                BorderStyle = BorderStyle.FixedSingle
+            };
+            groupBoxResults.Controls.Add(headerLine);
+
+            Panel dataLine = new Panel
+            {
+                Location = new Point(30, 260),
+                Size = new Size(470, 1),
+                BorderStyle = BorderStyle.FixedSingle
+            };
+            groupBoxResults.Controls.Add(dataLine);
+
+            Panel bottomLine = new Panel
+            {
+                Location = new Point(30, 285),
+                Size = new Size(470, 1),
+                BorderStyle = BorderStyle.FixedSingle
+            };
+            groupBoxResults.Controls.Add(bottomLine);
+
+            // Column headers
+            Label lblLabelHeader = new Label
             {
                 Text = "Labour",
-                Location = new Point(20, 225),
-                AutoSize = true,
-                Font = new Font(this.Font, FontStyle.Bold)
+                Location = new Point(130, 215),
+                Size = new Size(100, 20),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font = new Font(this.Font, FontStyle.Bold),
+                ForeColor = Color.DarkBlue
             };
-            lblLabourHours = new Label
+            groupBoxResults.Controls.Add(lblLabelHeader);
+
+            Label lblTravelHeader = new Label
             {
-                Text = "Total Hours:",
-                Location = new Point(40, 250),
-                AutoSize = true
+                Text = "Travel",
+                Location = new Point(260, 215),
+                Size = new Size(100, 20),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font = new Font(this.Font, FontStyle.Bold),
+                ForeColor = Color.DarkBlue
             };
+            groupBoxResults.Controls.Add(lblTravelHeader);
+
+            Label lblExpensesHeader = new Label
+            {
+                Text = "Expenses",
+                Location = new Point(390, 215),
+                Size = new Size(100, 20),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font = new Font(this.Font, FontStyle.Bold),
+                ForeColor = Color.DarkBlue
+            };
+            groupBoxResults.Controls.Add(lblExpensesHeader);
+
+            // Row headers
+            Label lblHoursRow = new Label
+            {
+                Text = "Total Hours",
+                Location = new Point(40, 240),
+                Size = new Size(80, 20),
+                Font = new Font(this.Font, FontStyle.Regular)
+            };
+            groupBoxResults.Controls.Add(lblHoursRow);
+
+            Label lblCostRow = new Label
+            {
+                Text = "Total Cost",
+                Location = new Point(40, 265),
+                Size = new Size(80, 20),
+                Font = new Font(this.Font, FontStyle.Regular)
+            };
+            groupBoxResults.Controls.Add(lblCostRow);
+
+            // Data cells
             lblLabourHoursValue = new Label
             {
                 Name = "lblLabourHoursValue",
                 Text = "0",
-                Location = new Point(150, 250),
-                Size = new Size(40, 20)
+                Location = new Point(130, 240),
+                Size = new Size(100, 20),
+                TextAlign = ContentAlignment.MiddleCenter
             };
-            lblLabourCost = new Label
-            {
-                Text = "Total Cost:",
-                Location = new Point(250, 250),
-                AutoSize = true
-            };
+            groupBoxResults.Controls.Add(lblLabourHoursValue);
+
             lblLabourCostValue = new Label
             {
                 Name = "lblLabourCostValue",
                 Text = "$0.00",
-                Location = new Point(350, 250),
-                Size = new Size(100, 20)
+                Location = new Point(130, 265),
+                Size = new Size(100, 20),
+                TextAlign = ContentAlignment.MiddleCenter,
+                ForeColor = Color.DarkBlue
             };
+            groupBoxResults.Controls.Add(lblLabourCostValue);
 
-            // Travel section
-            lblTravelSection = new Label
-            {
-                Text = "Travel",
-                Location = new Point(20, 275),
-                AutoSize = true,
-                Font = new Font(this.Font, FontStyle.Bold)
-            };
-            lblTravelHours = new Label
-            {
-                Text = "Total Hours:",
-                Location = new Point(40, 300),
-                AutoSize = true
-            };
             lblTravelHoursValue = new Label
             {
                 Name = "lblTravelHoursValue",
                 Text = "0",
-                Location = new Point(150, 300),
-                Size = new Size(40, 20)
+                Location = new Point(260, 240),
+                Size = new Size(100, 20),
+                TextAlign = ContentAlignment.MiddleCenter
             };
-            lblTravelCost = new Label
-            {
-                Text = "Total Cost:",
-                Location = new Point(250, 300),
-                AutoSize = true
-            };
+            groupBoxResults.Controls.Add(lblTravelHoursValue);
+
             lblTravelCostValue = new Label
             {
                 Name = "lblTravelCostValue",
                 Text = "$0.00",
-                Location = new Point(350, 300),
-                Size = new Size(100, 20)
+                Location = new Point(260, 265),
+                Size = new Size(100, 20),
+                TextAlign = ContentAlignment.MiddleCenter,
+                ForeColor = Color.DarkBlue
             };
+            groupBoxResults.Controls.Add(lblTravelCostValue);
 
-            // Expenses section (adjusted positions)
-            lblExpensesSection = new Label
+            Label lblExpensesHours = new Label
             {
-                Text = "Expenses (Cost + 10%, not incl. per Diem)",
-                Location = new Point(20, 325),  // Lowered Y position
-                AutoSize = true,
-                Font = new Font(this.Font, FontStyle.Bold)
+                Text = "—",
+                Location = new Point(390, 240),
+                Size = new Size(100, 20),
+                TextAlign = ContentAlignment.MiddleCenter
             };
-            lblExpensesCost = new Label
-            {
-                Text = "Total Cost:",
-                Location = new Point(250, 350),  // Lowered Y position
-                AutoSize = true
-            };
+            groupBoxResults.Controls.Add(lblExpensesHours);
+
             lblExpensesCostValue = new Label
             {
                 Name = "lblExpensesCostValue",
                 Text = "$0.00",
-                Location = new Point(350, 350),  // Lowered Y position
-                Size = new Size(100, 20)
+                Location = new Point(390, 265),
+                Size = new Size(100, 20),
+                TextAlign = ContentAlignment.MiddleCenter,
+                ForeColor = Color.DarkBlue
             };
+            groupBoxResults.Controls.Add(lblExpensesCostValue);
 
-            // Grand total (adjusted positions)
+            // Expenses note
+            Label lblExpensesNote = new Label
+            {
+                Text = "(Cost + 10%, not incl. per Diem)",
+                Location = new Point(360, 290),
+                Size = new Size(170, 15),
+                Font = new Font(this.Font.FontFamily, 8),
+                ForeColor = Color.DarkSlateGray
+            };
+            groupBoxResults.Controls.Add(lblExpensesNote);
+
+            // Total days
+            lblTotalDaysValue = new Label
+            {
+                Name = "lblTotalDaysValue",
+                Text = "0",
+                Location = new Point(120, 290),
+                Size = new Size(40, 20),
+                Font = new Font(this.Font, FontStyle.Bold)
+            };
+            groupBoxResults.Controls.Add(lblTotalDaysValue);
+
+            Label lblTotalDays = new Label
+            {
+                Text = "Total Days:",
+                Location = new Point(40, 290),
+                AutoSize = true
+            };
+            groupBoxResults.Controls.Add(lblTotalDays);
+
+            // Grand Total panel
+            Panel grandTotalPanel = new Panel
+            {
+                Name = "grandTotalPanel",
+                Size = new Size(260, 120),
+                BorderStyle = BorderStyle.FixedSingle,
+                BackColor = Color.WhiteSmoke,
+                Location = new Point(530, 210)
+            };
+            groupBoxResults.Controls.Add(grandTotalPanel);
+
+            // Grand total label
             lblGrandTotalSection = new Label
             {
                 Text = "Grand total",
-                Location = new Point(500, 300),  // Moved down
+                Location = new Point(20, 15),
                 AutoSize = true,
-                Font = new Font(this.Font, FontStyle.Bold)
+                Font = new Font(this.Font.FontFamily, 14, FontStyle.Bold),
+                ForeColor = Color.DarkBlue
             };
+            grandTotalPanel.Controls.Add(lblGrandTotalSection);
+
+            // Grand total value
             lblGrandTotal = new Label
             {
                 Name = "lblGrandTotal",
                 Text = "$0.00",
-                Location = new Point(500, 330),  // Moved down
-                Size = new Size(150, 30),
-                Font = new Font(this.Font.FontFamily, 16, FontStyle.Bold)
+                Location = new Point(20, 50),
+                Size = new Size(220, 40),
+                Font = new Font(this.Font.FontFamily, 20, FontStyle.Bold)
+            };
+            grandTotalPanel.Controls.Add(lblGrandTotal);
+
+       
+            // Add event handler for reset button
+ 
+            {
+                DialogResult result = MessageBox.Show(
+                    "Are you sure you want to reset all values to default?",
+                    "Confirm Reset",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+                if (result == DialogResult.Yes)
+                {
+                    ResetForm();
+                }
             };
 
-            // Add all controls to groupBoxResults
-            groupBoxResults.Controls.AddRange(new Control[] {
-        lblTotalDays, lblTotalDaysValue,
-        lblLabourSection, lblLabourHours, lblLabourHoursValue, lblLabourCost, lblLabourCostValue,
-        lblTravelSection, lblTravelHours, lblTravelHoursValue, lblTravelCost, lblTravelCostValue,
-        lblExpensesSection, lblExpensesCost, lblExpensesCostValue,
-        lblGrandTotalSection, lblGrandTotal
-    });
-
-
+            // Add button directly to the form
+            this.Controls.Add(btnReset);
         }
+
+
 
         private void LoadData()
         {
@@ -815,18 +967,33 @@ namespace LabourBudgetCalculator
                 Font weekdayFont = new Font(this.Font, FontStyle.Regular);
                 Font weekendFont = new Font(this.Font, FontStyle.Bold);
 
-                // Reset all panels first (only those that are not manually set)
+                // Reset panels outside of active days - KEY CHANGE HERE
                 for (int i = 0; i < 14; i++)
                 {
                     Panel dayPanel = (Panel)Controls.Find($"dayPanel{i + 1}", true)[0];
-                    if (dayPanel.Tag is int) // Not manually set yet
+
+                    // If day is beyond our project, reset it and clear the 'manual' tag
+                    if (i >= totalDays)
                     {
-                        dayPanel.Tag = "auto"; // Mark as auto-assigned
+                        dayPanel.BackColor = SystemColors.Control;
+                        Label laborHoursLabel = (Label)dayPanel.Controls.Find($"laborHoursLabel{i + 1}", false)[0];
+                        Label travelHoursLabel = (Label)dayPanel.Controls.Find($"travelHoursLabel{i + 1}", false)[0];
+                        Label dayOfWeekLabel = (Label)dayPanel.Controls.Find($"dayOfWeekLabel{i + 1}", false)[0];
+
+                        laborHoursLabel.Text = "Labor: 0 hrs";
+                        laborHoursLabel.Tag = "0";
+                        travelHoursLabel.Text = "Travel: 0 hrs";
+                        travelHoursLabel.Tag = "0";
+                        dayOfWeekLabel.ForeColor = SystemColors.ControlText;
+                        dayOfWeekLabel.Font = weekdayFont;
+
+                        // Clear any manual tag
+                        dayPanel.Tag = "auto";
                     }
                 }
 
-                // Update each day panel
-                for (int i = 0; i < 14; i++)
+                // Update each active day panel
+                for (int i = 0; i < totalDays; i++)
                 {
                     try
                     {
@@ -834,19 +1001,6 @@ namespace LabourBudgetCalculator
                         Label dayOfWeekLabel = (Label)dayPanel.Controls.Find($"dayOfWeekLabel{i + 1}", false)[0];
                         Label laborHoursLabel = (Label)dayPanel.Controls.Find($"laborHoursLabel{i + 1}", false)[0];
                         Label travelHoursLabel = (Label)dayPanel.Controls.Find($"travelHoursLabel{i + 1}", false)[0];
-
-                        // If this day is beyond our project, reset and skip
-                        if (i >= totalDays)
-                        {
-                            dayPanel.BackColor = SystemColors.Control;
-                            laborHoursLabel.Text = "Labor: 0 hrs";
-                            laborHoursLabel.Tag = "0";
-                            travelHoursLabel.Text = "Travel: 0 hrs";
-                            travelHoursLabel.Tag = "0";
-                            dayOfWeekLabel.ForeColor = SystemColors.ControlText;
-                            dayOfWeekLabel.Font = weekdayFont;
-                            continue;
-                        }
 
                         // Calculate the day of week
                         int dayIndex = (startDayIndex + i) % 7;
@@ -899,12 +1053,28 @@ namespace LabourBudgetCalculator
                         {
                             // Regular work day
                             dayPanel.BackColor = Color.LightBlue;
+
+                            // Default to daily travel time
                             travelHours = dailyTravelTime;
+
+                            // Check for first day without separate travel TO
+                            if (!chkSeparateTravelTo.Checked && i == 0 && travelTimeToSite > 0)
+                            {
+                                // First day gets the site travel time
+                                travelHours = travelTimeToSite;
+                            }
+                            // Check for last day without separate travel FROM
+                            else if (!chkSeparateTravelFrom.Checked && i == totalDays - 1 && travelTimeToSite > 0)
+                            {
+                                // Last day gets the site travel time
+                                travelHours = travelTimeToSite;
+                            }
+
                             laborHours = hoursPerDay;
                         }
 
                         // Update hour labels
-                        laborHoursLabel.Text = $"Labor: {laborHours} hrs";
+                        laborHoursLabel.Text = $"Labour: {laborHours} hrs";
                         laborHoursLabel.Tag = laborHours.ToString();
                         travelHoursLabel.Text = $"Travel: {travelHours} hrs";
                         travelHoursLabel.Tag = travelHours.ToString();
@@ -917,98 +1087,342 @@ namespace LabourBudgetCalculator
                 }
             }
         }
-        private void SetupEventHandlers()
+
+        // Add this method to your MainForm class
+        private void EnhanceVisualAppearance()
         {
-            // Rate sheet selection change
-            ComboBox comboBoxRateSheet = (ComboBox)Controls.Find("comboBoxRateSheet", true)[0];
-            comboBoxRateSheet.SelectedIndexChanged += (sender, e) =>
+            // 1. Style all section headers
+            StyleSectionHeaders();
+
+            // 2. Enhance the Grand Total section
+            // EnhanceGrandTotalSection();
+        }
+
+        // Method to style section headers
+        // Method to style section headers
+        private void StyleSectionHeaders()
+        {
+            // Apply consistent styling to all section headers - updated for table layout
+            try
             {
-                if (comboBoxRateSheet.SelectedIndex >= 0 && comboBoxRateSheet.SelectedIndex < rateSheets.Count)
+                // Find the column header labels in the results panel
+                Panel resultsPanel = null;
+                foreach (Control c in this.Controls)
                 {
-                    currentRateSheet = rateSheets[comboBoxRateSheet.SelectedIndex];
-                    DisplayRateSheet();
-                    CalculateAndDisplayResults(); // Auto-calculate on change
-                }
-            };
-
-            // Holdover day checkbox - initial setup
-            CheckBox holdoverDayCheckBox = (CheckBox)Controls.Find("chkHoldoverDay", true)[0];
-            ComboBox holdoverDayComboBox = (ComboBox)Controls.Find("comboBoxHoldoverDay", true)[0];
-            holdoverDayCheckBox.CheckedChanged += (sender, e) =>
-            {
-                holdoverDayComboBox.Enabled = holdoverDayCheckBox.Checked;
-                CalculateAndDisplayResults(); // Auto-calculate on change
-                UpdateDayPanels(); // Update schedule display
-            };
-
-            // Start day change
-            ComboBox comboBoxStartDay = (ComboBox)Controls.Find("comboBoxStartDay", true)[0];
-            comboBoxStartDay.SelectedIndexChanged += (sender, e) =>
-            {
-                UpdateDayPanels();
-                CalculateAndDisplayResults(); // Auto-calculate on change
-            };
-
-            // Setup button
-            Button btnSetup = (Button)Controls.Find("btnSetup", true)[0];
-            btnSetup.Click += (sender, e) =>
-            {
-                using (var setupForm = new SetupForm(rateSheets))
-                {
-                    if (setupForm.ShowDialog() == DialogResult.OK)
+                    if (c is GroupBox && c.Name == "groupBoxResults")
                     {
-                        rateSheets = setupForm.UpdatedRateSheets;
-
-                        // Refresh rate sheet combo box
-                        comboBoxRateSheet.Items.Clear();
-                        foreach (var rateSheet in rateSheets)
+                        foreach (Control rc in c.Controls)
                         {
-                            comboBoxRateSheet.Items.Add(rateSheet.Name);
+                            if (rc is Panel && rc.Name == "resultsPanel")
+                            {
+                                resultsPanel = (Panel)rc;
+                                break;
+                            }
                         }
+                        break;
+                    }
+                }
 
-                        if (comboBoxRateSheet.Items.Count > 0)
+                if (resultsPanel != null)
+                {
+                    // Apply style to all labels with Bold font in the results panel
+                    foreach (Control c in resultsPanel.Controls)
+                    {
+                        if (c is Label && c.Font.Bold)
                         {
-                            comboBoxRateSheet.SelectedIndex = 0;
-                            currentRateSheet = rateSheets[0];
-                            DisplayRateSheet();
-                            CalculateAndDisplayResults(); // Auto-calculate on change
+                            c.ForeColor = Color.DarkBlue;
                         }
                     }
                 }
-            };
-
-            // Additional event handlers for schedule updates
-            NumericUpDown numDaysOnSite = (NumericUpDown)Controls.Find("numDaysOnSite", true)[0];
-            numDaysOnSite.ValueChanged += (s, e) => UpdateDayPanels();
-
-            NumericUpDown numHoursPerDay = (NumericUpDown)Controls.Find("numHoursPerDay", true)[0];
-            numHoursPerDay.ValueChanged += (s, e) => UpdateDayPanels();
-
-            // Already set up the holdoverDayCheckBox event handler above
-            holdoverDayComboBox.SelectedIndexChanged += (s, e) => UpdateDayPanels();
-
-            CheckBox chkSeparateTravelTo = (CheckBox)Controls.Find("chkSeparateTravelTo", true)[0];
-            chkSeparateTravelTo.CheckedChanged += (s, e) => {
-                UpdateDayPanels();
-                CalculateAndDisplayResults();
-            };
-
-            CheckBox chkSeparateTravelFrom = (CheckBox)Controls.Find("chkSeparateTravelFrom", true)[0];
-            chkSeparateTravelFrom.CheckedChanged += (s, e) => {
-                UpdateDayPanels();
-                CalculateAndDisplayResults();
-            };
-
-            NumericUpDown numTravelTime = (NumericUpDown)Controls.Find("numTravelTime", true)[0];
-            numTravelTime.ValueChanged += (s, e) => UpdateDayPanels();
-
-            NumericUpDown numDailyTravelTime = (NumericUpDown)Controls.Find("numDailyTravelTime", true)[0];
-            numDailyTravelTime.ValueChanged += (s, e) => UpdateDayPanels();
-
-            // Set up change events for all inputs to auto-calculate
-            SetupAutoCalculateEvents();
+            }
+            catch (Exception ex)
+            {
+                // Log error but don't crash
+                System.Diagnostics.Debug.WriteLine($"Error styling section headers: {ex.Message}");
+            }
         }
 
+        // Method to enhance Grand Total section
+        
+        private void SetupEventHandlers()
+        {
+            try
+            {
+                // Rate sheet selection change
+                Control[] rateSheetControls = Controls.Find("comboBoxRateSheet", true);
+                if (rateSheetControls.Length > 0 && rateSheetControls[0] is ComboBox)
+                {
+                    ComboBox comboBoxRateSheet = (ComboBox)rateSheetControls[0];
+                    comboBoxRateSheet.SelectedIndexChanged += (sender, e) =>
+                    {
+                        if (comboBoxRateSheet.SelectedIndex >= 0 && comboBoxRateSheet.SelectedIndex < rateSheets.Count)
+                        {
+                            currentRateSheet = rateSheets[comboBoxRateSheet.SelectedIndex];
+                            DisplayRateSheet();
+                            CalculateAndDisplayResults(); // Auto-calculate on change
+                        }
+                    };
+                }
+
+                // Emergency checkbox
+                Control[] emergencyControls = Controls.Find("chkEmergency", true);
+                if (emergencyControls.Length > 0 && emergencyControls[0] is CheckBox)
+                {
+                    CheckBox chkEmergency = (CheckBox)emergencyControls[0];
+                    chkEmergency.CheckedChanged += (sender, e) =>
+                    {
+                        // Update the rate display when Emergency is toggled
+                        UpdateRateDisplay();
+                        // Recalculate results
+                        CalculateAndDisplayResults();
+                    };
+                }
+
+                // Holdover day checkbox - initial setup
+                Control[] holdoverCheckControls = Controls.Find("chkHoldoverDay", true);
+                Control[] holdoverComboControls = Controls.Find("comboBoxHoldoverDay", true);
+
+                if (holdoverCheckControls.Length > 0 && holdoverCheckControls[0] is CheckBox &&
+                    holdoverComboControls.Length > 0 && holdoverComboControls[0] is ComboBox)
+                {
+                    CheckBox holdoverDayCheckBox = (CheckBox)holdoverCheckControls[0];
+                    ComboBox holdoverDayComboBox = (ComboBox)holdoverComboControls[0];
+
+                    holdoverDayCheckBox.CheckedChanged += (sender, e) =>
+                    {
+                        holdoverDayComboBox.Enabled = holdoverDayCheckBox.Checked;
+                        CalculateAndDisplayResults(); // Auto-calculate on change
+                        UpdateDayPanels(); // Update schedule display
+                    };
+
+                    // Also set up the combo box's event handler
+                    holdoverDayComboBox.SelectedIndexChanged += (s, e) => UpdateDayPanels();
+                }
+
+                // Start day change
+                Control[] startDayControls = Controls.Find("comboBoxStartDay", true);
+                if (startDayControls.Length > 0 && startDayControls[0] is ComboBox)
+                {
+                    ComboBox comboBoxStartDay = (ComboBox)startDayControls[0];
+                    comboBoxStartDay.SelectedIndexChanged += (sender, e) =>
+                    {
+                        UpdateDayPanels();
+                        CalculateAndDisplayResults(); // Auto-calculate on change
+                    };
+                }
+
+                // Setup button
+                Control[] setupControls = Controls.Find("btnSetup", true);
+                if (setupControls.Length > 0 && setupControls[0] is Button)
+                {
+                    Button btnSetup = (Button)setupControls[0];
+                    btnSetup.Click += (sender, e) =>
+                    {
+                        using (var setupForm = new SetupForm(rateSheets))
+                        {
+                            if (setupForm.ShowDialog() == DialogResult.OK)
+                            {
+                                rateSheets = setupForm.UpdatedRateSheets;
+
+                                // Find rate sheet combo box safely
+                                Control[] rateSheetBoxes = Controls.Find("comboBoxRateSheet", true);
+                                if (rateSheetBoxes.Length > 0 && rateSheetBoxes[0] is ComboBox)
+                                {
+                                    ComboBox comboBoxRateSheet = (ComboBox)rateSheetBoxes[0];
+
+                                    // Refresh rate sheet combo box
+                                    comboBoxRateSheet.Items.Clear();
+                                    foreach (var rateSheet in rateSheets)
+                                    {
+                                        comboBoxRateSheet.Items.Add(rateSheet.Name);
+                                    }
+
+                                    if (comboBoxRateSheet.Items.Count > 0)
+                                    {
+                                        comboBoxRateSheet.SelectedIndex = 0;
+                                        currentRateSheet = rateSheets[0];
+                                        DisplayRateSheet();
+                                        CalculateAndDisplayResults(); // Auto-calculate on change
+                                    }
+                                }
+                            }
+                        }
+                    };
+                }
+
+                // Reset button
+                Control[] resetControls = Controls.Find("btnReset", true);
+                if (resetControls.Length > 0 && resetControls[0] is Button)
+                {
+                    Button btnReset = (Button)resetControls[0];
+                    btnReset.Click += (sender, e) =>
+                    {
+                        // Confirm reset with user
+                        DialogResult result = MessageBox.Show(
+                            "Are you sure you want to reset all values to default?",
+                            "Confirm Reset",
+                            MessageBoxButtons.YesNo,
+                            MessageBoxIcon.Question);
+
+                        if (result == DialogResult.Yes)
+                        {
+                            ResetForm();
+                        }
+                    };
+                }
+
+                // Additional event handlers for schedule updates
+                SetupAdditionalEventHandlers();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error setting up event handlers: {ex.Message}");
+            }
+        }
+
+        private void SetupAdditionalEventHandlers()
+        {
+            try
+            {
+                // Days on site
+                Control[] daysOnSiteControls = Controls.Find("numDaysOnSite", true);
+                if (daysOnSiteControls.Length > 0 && daysOnSiteControls[0] is NumericUpDown)
+                {
+                    NumericUpDown numDaysOnSite = (NumericUpDown)daysOnSiteControls[0];
+                    numDaysOnSite.ValueChanged += (s, e) => UpdateDayPanels();
+                }
+
+                // Hours per day
+                Control[] hoursPerDayControls = Controls.Find("numHoursPerDay", true);
+                if (hoursPerDayControls.Length > 0 && hoursPerDayControls[0] is NumericUpDown)
+                {
+                    NumericUpDown numHoursPerDay = (NumericUpDown)hoursPerDayControls[0];
+                    numHoursPerDay.ValueChanged += (s, e) => UpdateDayPanels();
+                }
+
+                // Travel checkboxes
+                SetupTravelCheckboxes();
+
+                // Travel time controls
+                SetupTravelTimeControls();
+
+                // Set up change events for all inputs to auto-calculate
+                SetupAutoCalculateEvents();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error setting up additional event handlers: {ex.Message}");
+            }
+        }
+
+        private void SetupTravelCheckboxes()
+        {
+            // Separate travel TO checkbox
+            Control[] travelToControls = Controls.Find("chkSeparateTravelTo", true);
+            if (travelToControls.Length > 0 && travelToControls[0] is CheckBox)
+            {
+                CheckBox chkSeparateTravelTo = (CheckBox)travelToControls[0];
+                chkSeparateTravelTo.CheckedChanged += (s, e) => {
+                    UpdateDayPanels();
+                    CalculateAndDisplayResults();
+                };
+            }
+
+            // Separate travel FROM checkbox
+            Control[] travelFromControls = Controls.Find("chkSeparateTravelFrom", true);
+            if (travelFromControls.Length > 0 && travelFromControls[0] is CheckBox)
+            {
+                CheckBox chkSeparateTravelFrom = (CheckBox)travelFromControls[0];
+                chkSeparateTravelFrom.CheckedChanged += (s, e) => {
+                    UpdateDayPanels();
+                    CalculateAndDisplayResults();
+                };
+            }
+        }
+
+        private void SetupTravelTimeControls()
+        {
+            // Travel time to site
+            Control[] travelTimeControls = Controls.Find("numTravelTime", true);
+            if (travelTimeControls.Length > 0 && travelTimeControls[0] is NumericUpDown)
+            {
+                NumericUpDown numTravelTime = (NumericUpDown)travelTimeControls[0];
+                numTravelTime.ValueChanged += (s, e) => UpdateDayPanels();
+            }
+
+            // Daily travel time
+            Control[] dailyTravelTimeControls = Controls.Find("numDailyTravelTime", true);
+            if (dailyTravelTimeControls.Length > 0 && dailyTravelTimeControls[0] is NumericUpDown)
+            {
+                NumericUpDown numDailyTravelTime = (NumericUpDown)dailyTravelTimeControls[0];
+                numDailyTravelTime.ValueChanged += (s, e) => UpdateDayPanels();
+            }
+        }
+
+        private void UpdateRateDisplay()
+        {
+            // Get the emergency checkbox
+            CheckBox chkEmergency = (CheckBox)Controls.Find("chkEmergency", true)[0];
+            bool isEmergency = chkEmergency.Checked;
+
+            // Get the rate textboxes
+            TextBox txtRegularLabour = (TextBox)Controls.Find("txtRegularLabour", true)[0];
+            TextBox txtOvertimeLabour = (TextBox)Controls.Find("txtOvertimeLabour", true)[0];
+            TextBox txtPremiumLabour = (TextBox)Controls.Find("txtPremiumLabour", true)[0];
+            TextBox txtRegularTravel = (TextBox)Controls.Find("txtRegularTravel", true)[0];
+            TextBox txtOvertimeTravel = (TextBox)Controls.Find("txtOvertimeTravel", true)[0];
+            TextBox txtPremiumTravel = (TextBox)Controls.Find("txtPremiumTravel", true)[0];
+
+            // Get the current rate sheet
+            if (currentRateSheet == null)
+                return;
+
+            // Define an array of textboxes for easier handling
+            TextBox[] rateTextBoxes = new TextBox[]
+            {
+        txtRegularLabour, txtOvertimeLabour, txtPremiumLabour,
+        txtRegularTravel, txtOvertimeTravel, txtPremiumTravel
+            };
+
+            if (isEmergency)
+            {
+                // Show premium rates for all categories
+                txtRegularLabour.Text = currentRateSheet.PremiumLabourRate.ToString("F2");
+                txtOvertimeLabour.Text = currentRateSheet.PremiumLabourRate.ToString("F2");
+                txtPremiumLabour.Text = currentRateSheet.PremiumLabourRate.ToString("F2");
+                txtRegularTravel.Text = currentRateSheet.PremiumTravelRate.ToString("F2");
+                txtOvertimeTravel.Text = currentRateSheet.PremiumTravelRate.ToString("F2");
+                txtPremiumTravel.Text = currentRateSheet.PremiumTravelRate.ToString("F2");
+
+                // Set text color to red for ALL textboxes
+                foreach (TextBox textBox in rateTextBoxes)
+                {
+                    // Make sure ReadOnly is true so ForeColor will work
+                    textBox.ReadOnly = true;
+                    textBox.BackColor = SystemColors.Window; // Keep background white
+                    textBox.ForeColor = Color.Red;
+                }
+            }
+            else
+            {
+                // Show normal rates
+                txtRegularLabour.Text = currentRateSheet.RegularLabourRate.ToString("F2");
+                txtOvertimeLabour.Text = currentRateSheet.OvertimeLabourRate.ToString("F2");
+                txtPremiumLabour.Text = currentRateSheet.PremiumLabourRate.ToString("F2");
+                txtRegularTravel.Text = currentRateSheet.RegularTravelRate.ToString("F2");
+                txtOvertimeTravel.Text = currentRateSheet.OvertimeTravelRate.ToString("F2");
+                txtPremiumTravel.Text = currentRateSheet.PremiumTravelRate.ToString("F2");
+
+                // Reset text color to default for ALL textboxes
+                foreach (TextBox textBox in rateTextBoxes)
+                {
+                    // Keep ReadOnly property
+                    textBox.ReadOnly = true;
+                    textBox.BackColor = SystemColors.Window; // Keep background white
+                    textBox.ForeColor = SystemColors.WindowText;
+                }
+            }
+        }
         private void SetupAutoCalculateEvents()
         {
             // Days Configuration controls
@@ -1060,7 +1474,78 @@ namespace LabourBudgetCalculator
             numMileageRate.ValueChanged += (s, e) => CalculateAndDisplayResults();
             numPerDiem.ValueChanged += (s, e) => CalculateAndDisplayResults();
         }
+        private void AdjustLayoutForCurrentSize()
+        {
+            try
+            {
+                // Find the results group box safely
+                GroupBox groupBoxResults = null;
+                foreach (Control c in this.Controls)
+                {
+                    if (c is GroupBox && c.Name == "groupBoxResults")
+                    {
+                        groupBoxResults = c as GroupBox;
+                        break;
+                    }
+                }
 
+                if (groupBoxResults == null)
+                    return;
+
+                // Adjust height more conservatively
+                groupBoxResults.Height = Math.Min(450, this.ClientSize.Height - groupBoxResults.Location.Y - 20);
+
+                // Find the grand total panel more safely
+                Panel grandTotalPanel = null;
+                foreach (Control c in groupBoxResults.Controls)
+                {
+                    if (c is Panel && c.Controls.Count > 0)
+                    {
+                        foreach (Control panelControl in c.Controls)
+                        {
+                            if (panelControl is Label && panelControl.Name == "lblGrandTotal")
+                            {
+                                grandTotalPanel = c as Panel;
+                                break;
+                            }
+                        }
+                        if (grandTotalPanel != null) break;
+                    }
+                }
+
+                if (grandTotalPanel != null)
+                {
+                    // Use more conservative positioning
+                    int newX = Math.Max(groupBoxResults.Width - grandTotalPanel.Width - 20, 400);
+                    int newY = Math.Min(40, groupBoxResults.Height / 5);
+                    grandTotalPanel.Location = new Point(newX, newY);
+
+                    // Find the Reset button safely
+                    Button btnReset = null;
+                    foreach (Control c in groupBoxResults.Controls)
+                    {
+                        if (c is Button && c.Name == "btnReset")
+                        {
+                            btnReset = c as Button;
+                            break;
+                        }
+                    }
+
+                    // Position Reset button if found
+                    if (btnReset != null)
+                    {
+                        btnReset.Location = new Point(
+                            grandTotalPanel.Location.X + (grandTotalPanel.Width - btnReset.Width) / 2,
+                            grandTotalPanel.Location.Y + grandTotalPanel.Height + 10);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log error but don't crash
+                System.Diagnostics.Debug.WriteLine($"Error adjusting layout: {ex.Message}");
+            }
+        }
         private void DisplayRateSheet()
         {
             if (currentRateSheet == null)
@@ -1090,7 +1575,10 @@ namespace LabourBudgetCalculator
             numPerDiem.Value = currentRateSheet.PerDiemRate;
             numMileageRate.Value = currentRateSheet.MileageRate;
             numRentalCarCost.Value = currentRateSheet.RentalCarRate;
-            numFlightCost.Value = currentRateSheet.FlightCost;  // Add this line
+            numFlightCost.Value = currentRateSheet.FlightCost;
+
+            UpdateRateDisplay();
+
         }
 
         private decimal GetNumericValueSafely(string controlName, decimal defaultValue = 0)
@@ -1213,6 +1701,29 @@ namespace LabourBudgetCalculator
                 // Calculate total expenses and per diem
                 decimal totalExpenses = 0;
                 decimal totalPerDiem = 0;
+                decimal totalMileage = 0; // Track mileage separately since it doesn't get markup
+
+                // Get travel method
+                string travelMethod = "Driving"; // Default value
+                ComboBox comboBoxTravelMethod = GetControlSafely<ComboBox>("comboBoxTravelMethod");
+                if (comboBoxTravelMethod != null && comboBoxTravelMethod.SelectedItem != null)
+                {
+                    travelMethod = comboBoxTravelMethod.SelectedItem.ToString();
+                }
+
+                // Get rental car option
+                bool rentalCarChecked = false;
+                CheckBox chkRentalCar = GetControlSafely<CheckBox>("chkRentalCar");
+                if (chkRentalCar != null)
+                    rentalCarChecked = chkRentalCar.Checked;
+
+                decimal rentalCarCost = GetNumericValueSafely("numRentalCarCost", 0);
+                decimal flightCost = GetNumericValueSafely("numFlightCost", 0);
+                decimal mileageRate = GetNumericValueSafely("numMileageRate", 0);
+                decimal travelDistanceToSite = GetNumericValueSafely("numTravelDistance", 0);
+                decimal dailyTravelDistance = GetNumericValueSafely("numDailyTravelDistance", 0);
+                decimal hotelCost = GetNumericValueSafely("numHotelCost", 0);
+                decimal perDiemRate = GetNumericValueSafely("numPerDiem", 0);
 
                 // Process each day
                 for (int i = 0; i < totalDays; i++)
@@ -1243,6 +1754,21 @@ namespace LabourBudgetCalculator
                         decimal regularTravelHours = 0;
                         decimal overtimeTravelHours = 0;
                         decimal premiumTravelHours = 0;
+
+                        // Check for special day types
+                        bool isTravelToDay = (separateTravelTo && i == 0);
+                        bool isTravelFromDay = (separateTravelFrom && i == totalDays - 1);
+                        bool isFirstDay = (i == 0);
+                        bool isLastDay = (i == totalDays - 1);
+
+                        // Apply special day logic first
+                        if (isTravelToDay || isTravelFromDay)
+                        {
+                            // Get travel time for special travel days
+                            decimal specialTravelTime = GetNumericValueSafely("numTravelTime", 0);
+                            travelHours = specialTravelTime;
+                            laborHours = 0;
+                        }
 
                         // Apply holdover rule for holdover days
                         if (dayPanel.BackColor == Color.LightGreen) // Holdover day
@@ -1311,64 +1837,77 @@ namespace LabourBudgetCalculator
                         decimal dayFlight = 0;
                         decimal dayPerDiem = 0;
 
-                        // Hotel cost
-                        decimal hotelCost = ((NumericUpDown)Controls.Find("numHotelCost", true)[0]).Value;
+                        // Hotel cost - applied to all days except the last
                         if (i < totalDays - 1) // No hotel on last day
                         {
                             dayHotel = hotelCost;
                         }
 
-                        // Mileage
-                        decimal mileageRate = ((NumericUpDown)Controls.Find("numMileageRate", true)[0]).Value;
-                        string travelMethod = "Driving"; // Default value
-                        ComboBox comboBoxTravelMethod = GetControlSafely<ComboBox>("comboBoxTravelMethod");
-                        if (comboBoxTravelMethod != null && comboBoxTravelMethod.SelectedItem != null)
+                        // Rental car cost - applied to all days if checked
+                        if (rentalCarChecked)
                         {
-                            travelMethod = comboBoxTravelMethod.SelectedItem.ToString();
+                            dayRental = rentalCarCost;
                         }
 
-                        if (dayPanel.BackColor == Color.Yellow) // Travel day
+                        // Flight cost - only on travel days or first/last day if no separate travel days
+                        if (travelMethod == "Flight")
                         {
-                            if (travelMethod == "Driving")
+                            if (isTravelToDay || isTravelFromDay ||
+                                (isFirstDay && !separateTravelTo) ||
+                                (isLastDay && !separateTravelFrom))
                             {
-                                decimal travelDistance = ((NumericUpDown)Controls.Find("numTravelDistance", true)[0]).Value;
-                                dayMileage = mileageRate * travelDistance;
-                            }
-                            else if (travelMethod == "Flight")
-                            {
-                                dayFlight = ((NumericUpDown)Controls.Find("numFlightCost", true)[0]).Value;
+                                dayFlight = flightCost;
                             }
                         }
-                        else if (dayPanel.BackColor == Color.LightBlue) // Work day
-                        {
-                            // Check if rental car is checked
-                            bool rentalCarChecked = false;
-                            CheckBox chkRentalCar = GetControlSafely<CheckBox>("chkRentalCar");
-                            if (chkRentalCar != null)
-                                rentalCarChecked = chkRentalCar.Checked;
 
-                            if (!rentalCarChecked) // Only apply mileage if rental car is NOT checked
+                        // Mileage calculation - the key fix
+                        if (isFirstDay || isLastDay)
+                        {
+                            // First day or last day mileage - always apply if travel distance is specified
+                            // (regardless of travel method or rental car)
+                            if (travelDistanceToSite > 0)
                             {
-                                decimal dailyDistance = GetNumericValueSafely("numDailyTravelDistance", 0);
-                                dayMileage = mileageRate * dailyDistance;
+                                dayMileage = mileageRate * travelDistanceToSite;
                             }
-                            // If rental car is checked, dayMileage remains 0
+                        }
+                        else if (travelMethod == "Driving" && !rentalCarChecked)
+                        {
+                            // For middle days, only apply mileage if:
+                            // 1. Travel method is Driving AND
+                            // 2. Not using a rental car
+                            dayMileage = mileageRate * dailyTravelDistance;
                         }
 
-                        // Rental car
-                        if (((CheckBox)Controls.Find("chkRentalCar", true)[0]).Checked)
+                        // TRAVEL TIME SUPERSEDING LOGIC
+                        // Override travel hours for first/last day as needed
+                        decimal travelTimeToSite = GetNumericValueSafely("numTravelTime", 0);
+                        decimal dailyTravelTime = GetNumericValueSafely("numDailyTravelTime", 0);
+
+                        // Check if we need to override travel hours for first/last day without separate travel
+                        if (!separateTravelTo && i == 0 && travelTimeToSite > 0)
                         {
-                            dayRental = ((NumericUpDown)Controls.Find("numRentalCarCost", true)[0]).Value;
+                            // First day gets the site travel time
+                            travelHours = travelTimeToSite;
+                            travelHoursLabel.Text = $"Travel: {travelTimeToSite} hrs";
+                            travelHoursLabel.Tag = travelTimeToSite.ToString();
+                        }
+                        else if (!separateTravelFrom && i == totalDays - 1 && travelTimeToSite > 0)
+                        {
+                            // Last day gets the site travel time
+                            travelHours = travelTimeToSite;
+                            travelHoursLabel.Text = $"Travel: {travelTimeToSite} hrs";
+                            travelHoursLabel.Tag = travelTimeToSite.ToString();
                         }
 
                         // Per diem
                         if (laborHours > 0 || travelHours > 0) // If there's any work or travel
                         {
-                            dayPerDiem = ((NumericUpDown)Controls.Find("numPerDiem", true)[0]).Value;
+                            dayPerDiem = perDiemRate;
                         }
 
                         // Track totals for expenses and per diem
-                        totalExpenses += dayMileage + dayHotel + dayRental + dayFlight;
+                        totalExpenses += dayHotel + dayRental + dayFlight;
+                        totalMileage += dayMileage; // Track mileage separately (no markup)
                         totalPerDiem += dayPerDiem;
 
                         // Total for the day
@@ -1428,15 +1967,15 @@ namespace LabourBudgetCalculator
                 lblLabourCostValue.Text = totalLaborCost.ToString("C2");
                 lblTravelCostValue.Text = totalTravelCost.ToString("C2");
 
-                // Add 10% to expenses
+                // Add 10% to expenses (excluding mileage and per diem)
                 totalExpenses *= 1.1m;
 
-                // Update expenses display
+                // Update expenses display - include mileage here
                 Label lblExpensesCostValue = (Label)Controls.Find("lblExpensesCostValue", true)[0];
-                lblExpensesCostValue.Text = totalExpenses.ToString("C2");
+                lblExpensesCostValue.Text = (totalExpenses + totalMileage).ToString("C2");
 
                 // Grand total
-                decimal grandTotal = totalLaborCost + totalTravelCost + totalExpenses + totalPerDiem;
+                decimal grandTotal = totalLaborCost + totalTravelCost + totalExpenses + totalMileage + totalPerDiem;
 
                 // Update grand total display
                 Label lblGrandTotal = (Label)Controls.Find("lblGrandTotal", true)[0];
@@ -1449,7 +1988,89 @@ namespace LabourBudgetCalculator
                 MessageBox.Show($"Calculation error: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+        private void SetupTooltips()
+        {
+            // Initialize the class-level toolTip
+            toolTip = new ToolTip();
 
+            // Configure the toolTip
+            toolTip.AutoPopDelay = 10000;
+            toolTip.InitialDelay = 500;
+            toolTip.ReshowDelay = 200;
+            toolTip.ShowAlways = true;
+
+            // Apply tooltips to controls
+            try
+            {
+                // First, find the travel group box
+                Control[] groupBoxes = this.Controls.Find("groupBoxTravel", true);
+                if (groupBoxes.Length > 0 && groupBoxes[0] is GroupBox)
+                {
+                    GroupBox travelGroup = (GroupBox)groupBoxes[0];
+
+                    // Look for the labels within the travel group
+                    foreach (Control c in travelGroup.Controls)
+                    {
+                        if (c is Label && c.Text.Contains("Travel Distance to Site Area"))
+                        {
+                            // Apply tooltip to travel distance label
+                            toolTip.SetToolTip(c,
+                                "This is usually for separate travel days, and includes distance to car rental location. " +
+                                "If there is no separate travel day, this distance will supersede the daily travel distance for that day");
+
+                            System.Diagnostics.Debug.WriteLine("Tooltip applied to: " + c.Text);
+                        }
+
+                        if (c is Label && c.Text.Contains("Total Travel Time to Site Area"))
+                        {
+                            // Apply tooltip to total travel time label
+                            toolTip.SetToolTip(c,
+                                "This is usually for separate travel days, and includes travel time for flights. " +
+                                "If there is no separate travel day, this time will supersede the daily travel time for that day");
+
+                            System.Diagnostics.Debug.WriteLine("Tooltip applied to: " + c.Text);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("Error in tooltip setup: " + ex.Message);
+            }
+        }
+        private void SetupTravelTimeDistanceLink()
+        {
+            // Get the numeric up down controls
+            NumericUpDown numDailyTravelTime = (NumericUpDown)Controls.Find("numDailyTravelTime", true)[0];
+            NumericUpDown numDailyTravelDistance = (NumericUpDown)Controls.Find("numDailyTravelDistance", true)[0];
+
+            // Flag to prevent recursive updates
+            bool isUpdating = false;
+
+            // Add event handler for travel time changes
+            numDailyTravelTime.ValueChanged += (sender, e) =>
+            {
+                if (!isUpdating)
+                {
+                    isUpdating = true;
+                    // Convert time to distance (0.5 hours = 30 miles, which is 60 miles per hour)
+                    numDailyTravelDistance.Value = numDailyTravelTime.Value * 60;
+                    isUpdating = false;
+                }
+            };
+
+            // Add event handler for travel distance changes
+            numDailyTravelDistance.ValueChanged += (sender, e) =>
+            {
+                if (!isUpdating)
+                {
+                    isUpdating = true;
+                    // Convert distance to time (30 miles = 0.5 hours)
+                    numDailyTravelTime.Value = numDailyTravelDistance.Value / 60;
+                    isUpdating = false;
+                }
+            };
+        }
         private void UpdateDataGridView(int totalDays, decimal laborRate, decimal travelRate,
                                 decimal mileageRate, decimal hotelCost, decimal rentalCost,
                                 decimal flightCost, decimal perDiemRate)
