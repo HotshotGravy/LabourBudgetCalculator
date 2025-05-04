@@ -848,7 +848,7 @@ namespace LabourBudgetCalculator
                 Text = "0",
                 Location = new Point(155, 288),
                 Size = new Size(40, 25),
-                Font = new Font(this.Font.FontFamily, 18, FontStyle.Bold) // Increased from original size
+                Font = new Font(this.Font.FontFamily, 18, FontStyle.Bold) 
             };
             groupBoxResults.Controls.Add(lblTotalDaysValue);
 
@@ -857,7 +857,7 @@ namespace LabourBudgetCalculator
                 Text = "Total Days:",
                 Location = new Point(40, 290),
                 AutoSize = true,
-                Font = new Font(this.Font.FontFamily, 14, FontStyle.Bold) // Added font size here
+                Font = new Font(this.Font.FontFamily, 14, FontStyle.Bold) 
             };
             groupBoxResults.Controls.Add(lblTotalDays);
 
@@ -867,7 +867,7 @@ namespace LabourBudgetCalculator
                 Name = "grandTotalPanel",
                 Size = new Size(260, 100),
                 BorderStyle = BorderStyle.FixedSingle,
-                BackColor = Color.WhiteSmoke,
+               // BackColor = Color.WhiteSmoke,
                 Location = new Point(530, 210)
             };
             groupBoxResults.Controls.Add(grandTotalPanel);
@@ -879,8 +879,9 @@ namespace LabourBudgetCalculator
                 Location = new Point(20, 15),
                 AutoSize = true,
                 Font = new Font(this.Font.FontFamily, 14, FontStyle.Bold),
-                ForeColor = Color.DarkBlue
-            };
+                ForeColor = Color.DarkBlue,
+                BackColor = Color.Transparent
+        };
             grandTotalPanel.Controls.Add(lblGrandTotalSection);
 
             // Grand total value
@@ -890,11 +891,10 @@ namespace LabourBudgetCalculator
                 Text = "$0.00",
                 Location = new Point(20, 50),
                 Size = new Size(220, 40),
-                Font = new Font(this.Font.FontFamily, 20, FontStyle.Bold)
+                Font = new Font(this.Font.FontFamily, 20, FontStyle.Bold),
+                BackColor = Color.Transparent
             };
             grandTotalPanel.Controls.Add(lblGrandTotal);
-
-       
             
         }
 
@@ -1011,7 +1011,7 @@ namespace LabourBudgetCalculator
 
                 // Weekend formatting
                 // Weekend formatting
-                Color weekendColor = isDarkMode ? Color.LightPink : Color.Gray;
+                Color weekendColor = isDarkMode ? Color.Yellow: Color.Gray;
                 Font weekdayFont = new Font(this.Font, FontStyle.Regular);
                 Font weekendFont = new Font(this.Font, FontStyle.Bold);
 
@@ -2143,7 +2143,32 @@ namespace LabourBudgetCalculator
                         }
                     }
                 }
-                else
+                else if (panel.Name == "grandTotalPanel")
+                {
+                    panel.BackColor = darkPanelBackColor;
+                    panel.BorderStyle = BorderStyle.FixedSingle;
+
+                    // Explicitly set all contained labels to transparent
+                    foreach (Control childControl in panel.Controls)
+                    {
+                        if (childControl is Label)
+                        {
+                            Label label = (Label)childControl;
+                            label.BackColor = Color.Transparent;
+                            if (label.Name == "lblGrandTotal" || label.Name == "lblGrandTotalSection")
+                            {
+                                label.ForeColor = Color.LightSkyBlue;
+                            }
+                            else
+                            {
+                                label.ForeColor = Color.White;
+                            }
+                        }
+                    }
+
+                
+            }
+            else
                 {
                     panel.BackColor = darkPanelBackColor;
                     panel.BorderStyle = BorderStyle.FixedSingle;
@@ -2174,10 +2199,12 @@ namespace LabourBudgetCalculator
                 if (control.Name == "lblGrandTotal")
                 {
                     control.ForeColor = Color.LightSkyBlue; // Highlight total in dark mode
+                    control.BackColor = Color.Transparent;
                 }
                 else if (control.Name == "lblGrandTotalSection")
                 {
-                    control.ForeColor = Color.LightSkyBlue; // Highlight heading in dark mode
+                    control.ForeColor = Color.LightSkyBlue;
+                    control.BackColor = Color.Transparent;// Highlight heading in dark mode
                 }
             }
 
@@ -2235,10 +2262,12 @@ namespace LabourBudgetCalculator
                 if (control.Name == "lblGrandTotal")
                 {
                     control.ForeColor = SystemColors.ControlText;
+                    control.BackColor = Color.Transparent;
                 }
                 else if (control.Name == "lblGrandTotalSection")
                 {
                     control.ForeColor = Color.DarkBlue; // Original color
+                    control.BackColor = Color.Transparent;
                 }
             }
 
@@ -2291,7 +2320,7 @@ namespace LabourBudgetCalculator
 
                                 if (dayText == "Saturday" || dayText == "Sunday")
                                 {
-                                    dayOfWeekLabel.ForeColor = isDarkMode ? Color.LightPink : Color.Gray;
+                                    dayOfWeekLabel.ForeColor = isDarkMode ? Color.Yellow : Color.Gray;
                                 }
                             }
                         }
@@ -2657,7 +2686,8 @@ namespace LabourBudgetCalculator
                         DecimalPlaces = 1,
                         Minimum = 0,
                         Maximum = 24,
-                        Value = laborHours
+                        Value = laborHours,
+                        Increment = 0.5m
                     };
 
                     Label lblTravel = new Label { Text = "Travel Hours:", Location = new Point(20, 110), AutoSize = true };
@@ -2668,7 +2698,8 @@ namespace LabourBudgetCalculator
                         DecimalPlaces = 1,
                         Minimum = 0,
                         Maximum = 24,
-                        Value = travelHours
+                        Value = travelHours,
+                        Increment = 0.5m
                     };
 
                     // Add event handler for day type change
@@ -2703,6 +2734,7 @@ namespace LabourBudgetCalculator
                             numTravel.Value = 0;
                         }
 
+                        // string selectedType = comboDayType.SelectedItem.ToString();
                         if (selectedType == "Work Day")
                             clickedPanel.BackColor = isDarkMode ? darkModeWorkDay : lightWorkDay;
                         else if (selectedType == "Travel Day")
@@ -2711,7 +2743,6 @@ namespace LabourBudgetCalculator
                             clickedPanel.BackColor = isDarkMode ? darkModeHoldoverDay : lightHoldoverDay;
                         else if (selectedType == "Nil")
                             clickedPanel.BackColor = isDarkMode ? darkControlBackColor : SystemColors.Control;
-
 
                     };
 
