@@ -2764,13 +2764,13 @@ namespace LabourBudgetCalculator
                         // Update panel color based on selected day type
                         string selectedType = comboDayType.SelectedItem.ToString();
                         if (selectedType == "Work Day")
-                            clickedPanel.BackColor = Color.LightBlue;
+                            clickedPanel.BackColor = isDarkMode ? darkModeWorkDay : Color.LightBlue;
                         else if (selectedType == "Travel Day")
-                            clickedPanel.BackColor = Color.Yellow;
+                            clickedPanel.BackColor = isDarkMode ? darkModeTravelDay : Color.Yellow;
                         else if (selectedType == "Holdover Day")
-                            clickedPanel.BackColor = Color.LightGreen;
+                            clickedPanel.BackColor = isDarkMode ? darkModeHoldoverDay : Color.LightGreen;
                         else if (selectedType == "Nil")
-                            clickedPanel.BackColor = SystemColors.Control;
+                            clickedPanel.BackColor = isDarkMode ? darkControlBackColor : SystemColors.Control;
 
                         // Mark as manually set
                         clickedPanel.Tag = "manual";
@@ -2793,8 +2793,13 @@ namespace LabourBudgetCalculator
             ((NumericUpDown)Controls.Find("numTravelTime", true)[0]).Value = 0;
             ((NumericUpDown)Controls.Find("numDailyTravelDistance", true)[0]).Value = 0;
             ((NumericUpDown)Controls.Find("numDailyTravelTime", true)[0]).Value = 0;
-            ((NumericUpDown)Controls.Find("numFlightCost", true)[0]).Value = 0;
-            ((NumericUpDown)Controls.Find("numRentalCarCost", true)[0]).Value = 0;
+
+            // Use current rate sheet values instead of zeros
+            ((NumericUpDown)Controls.Find("numFlightCost", true)[0]).Value = currentRateSheet.FlightCost;
+            ((NumericUpDown)Controls.Find("numRentalCarCost", true)[0]).Value = currentRateSheet.RentalCarRate;
+            ((NumericUpDown)Controls.Find("numHotelCost", true)[0]).Value = currentRateSheet.HotelCost;
+            ((NumericUpDown)Controls.Find("numMileageRate", true)[0]).Value = currentRateSheet.MileageRate;
+            ((NumericUpDown)Controls.Find("numPerDiem", true)[0]).Value = currentRateSheet.PerDiemRate;
 
             // Reset checkboxes
             ((CheckBox)Controls.Find("chkHoldoverDay", true)[0]).Checked = false;
