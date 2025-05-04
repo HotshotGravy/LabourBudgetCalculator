@@ -124,6 +124,7 @@ namespace LabourBudgetCalculator
             CreateDaysSection();
             CreateTravelSection();
             CreateExpensesSection();
+            CreateProjectInfoSection();
             CreateCalendarSection();
             CreateResultsSection();
 
@@ -398,7 +399,7 @@ namespace LabourBudgetCalculator
                 Name = "groupBoxExpenses",
                 Text = "Expenses",
                 Location = new Point(25, 486),
-                Size = new Size(420, 260)
+                Size = new Size(420, 308)
             };
             this.Controls.Add(groupBoxExpenses);
 
@@ -515,6 +516,328 @@ namespace LabourBudgetCalculator
         lblPerDiem, numPerDiem, lblPerDiemUnit,
         btnSetup, btnReset, btnDarkMode 
     });
+        }
+
+        private void CreateProjectInfoSection()
+        {
+            // Create Project Info Section
+            GroupBox groupBoxProjectInfo = new GroupBox
+            {
+                Name = "groupBoxProjectInfo",
+                Text = "Project Info",
+                Location = new Point(890, 25), // Aligned with Days Configuration top
+                Size = new Size(450, 180)  // Match height of other top panels
+            };
+            this.Controls.Add(groupBoxProjectInfo);
+
+            // Technician Name
+            Label lblTechnician = new Label
+            {
+                Text = "Technician:",
+                Location = new Point(20, 30),
+                AutoSize = true
+            };
+
+            TextBox txtTechnician = new TextBox
+            {
+                Name = "txtTechnician",
+                Text = "Technician", // Default value
+                Location = new Point(120, 27),
+                Size = new Size(200, 25),
+            };
+
+            // Start Date
+            Label lblStartDate = new Label
+            {
+                Text = "Start Date:",
+                Location = new Point(20, 70),
+                AutoSize = true
+            };
+
+            DateTimePicker dtpStartDate = new DateTimePicker
+            {
+                Name = "dtpStartDate",
+                Location = new Point(120, 67),
+                Size = new Size(200, 25),
+                Format = DateTimePickerFormat.Custom,
+                CustomFormat = "MMMM d, yyyy",
+                ShowCheckBox = true,
+                Checked = false
+            };
+
+            Button btnClearStartDate = new Button
+            {
+                Name = "btnClearStartDate",
+                Text = "Clear",
+                Location = new Point(330, 67),
+                Size = new Size(60, 25),
+            };
+
+            // End Date
+            Label lblEndDate = new Label
+            {
+                Text = "End Date:",
+                Location = new Point(20, 110),
+                AutoSize = true
+            };
+
+            DateTimePicker dtpEndDate = new DateTimePicker
+            {
+                Name = "dtpEndDate",
+                Location = new Point(120, 107),
+                Size = new Size(200, 25),
+                Format = DateTimePickerFormat.Custom,
+                CustomFormat = "MMMM d, yyyy",
+                ShowCheckBox = true,
+                Checked = false
+            };
+
+            Button btnClearEndDate = new Button
+            {
+                Name = "btnClearEndDate",
+                Text = "Clear",
+                Location = new Point(330, 107),
+                Size = new Size(60, 25),
+            };
+
+            // Add controls to groupBoxProjectInfo
+            groupBoxProjectInfo.Controls.AddRange(new Control[] {
+        lblTechnician, txtTechnician,
+        lblStartDate, dtpStartDate, btnClearStartDate,
+        lblEndDate, dtpEndDate, btnClearEndDate
+    });
+
+            // Set up event handlers for the date controls
+            SetupDateControlEvents(dtpStartDate, dtpEndDate, btnClearStartDate, btnClearEndDate);
+        }
+
+        // These are separate methods at the class level - not inside CreateProjectInfoSection
+        private void SetupDateControlEvents(DateTimePicker dtpStartDate, DateTimePicker dtpEndDate,
+                                            Button btnClearStartDate, Button btnClearEndDate)
+        {
+            // When unchecked, show "Not specified"
+            dtpStartDate.ValueChanged += (s, e) =>
+            {
+                if (!dtpStartDate.Checked)
+                {
+                    dtpStartDate.CustomFormat = " ";
+                }
+                else
+                {
+                    dtpStartDate.CustomFormat = "MMMM d, yyyy";
+                    UpdateStartDayFromDate(dtpStartDate.Value);
+                }
+                UpdateScheduleDates();
+            };
+
+            dtpEndDate.ValueChanged += (s, e) =>
+            {
+                if (!dtpEndDate.Checked)
+                {
+                    dtpEndDate.CustomFormat = " ";
+                }
+                else
+                {
+                    dtpEndDate.CustomFormat = "MMMM d, yyyy";
+                    ValidateDateRange();
+                }
+                UpdateScheduleDates();
+            };
+
+            // Clear button handlers
+            btnClearStartDate.Click += (s, e) =>
+            {
+                dtpStartDate.Checked = false;
+                dtpStartDate.CustomFormat = " ";
+                EnableStartDayControl(true);
+                UpdateScheduleDates();
+            };
+
+            btnClearEndDate.Click += (s, e) =>
+            {
+                dtpEndDate.Checked = false;
+                dtpEndDate.CustomFormat = " ";
+                EnableDaysOnSiteControl(true);
+                UpdateScheduleDates();
+            };
+
+            // Initialize date pickers as "Not specified"
+            dtpStartDate.CustomFormat = " ";
+            dtpEndDate.CustomFormat = " ";
+        }
+
+        private void UpdateStartDayFromDate(DateTime startDate)
+        {
+            // Get the day of week from the start date
+            int dayOfWeek = (int)startDate.DayOfWeek;
+
+            // Convert to the app's day of week format (0-6 where 0 is Monday)
+            // DayOfWeek enum: 0=Sunday, 1=Monday, ... 6=Saturday
+            int appDayOfWeek = dayOfWeek == 0 ? 6 : dayOfWeek - 1;
+
+            // Update the start day combobox
+            ComboBox comboBoxStartDay = (ComboBox)Controls.Find("comboBoxStartDay", true)[0];
+            comboBoxStartDay.SelectedIndex = appDayOfWeek;
+
+            // Gray out the control
+            EnableStartDayControl(false);
+
+            // If end date is also set, calculate days on site
+            DateTimePicker dtpEndDate = (DateTimePicker)Controls.Find("dtpEndDate", true)[0];
+            if (dtpEndDate.Checked)
+            {
+                CalculateDaysOnSite();
+            }
+        }
+
+        private void EnableStartDayControl(bool enabled)
+        {
+            // Enable/disable the start day combobox
+            ComboBox comboBoxStartDay = (ComboBox)Controls.Find("comboBoxStartDay", true)[0];
+            comboBoxStartDay.Enabled = enabled;
+            comboBoxStartDay.BackColor = enabled ? SystemColors.Window : SystemColors.Control;
+        }
+
+        private void EnableDaysOnSiteControl(bool enabled)
+        {
+            // Enable/disable the days on site numeric control
+            NumericUpDown numDaysOnSite = (NumericUpDown)Controls.Find("numDaysOnSite", true)[0];
+            numDaysOnSite.Enabled = enabled;
+            numDaysOnSite.BackColor = enabled ? SystemColors.Window : SystemColors.Control;
+        }
+
+        private void ValidateDateRange()
+        {
+            DateTimePicker dtpStartDate = (DateTimePicker)Controls.Find("dtpStartDate", true)[0];
+            DateTimePicker dtpEndDate = (DateTimePicker)Controls.Find("dtpEndDate", true)[0];
+
+            // Only validate if both dates are specified
+            if (dtpStartDate.Checked && dtpEndDate.Checked)
+            {
+                TimeSpan duration = dtpEndDate.Value.Date - dtpStartDate.Value.Date;
+                int days = duration.Days + 1; // Include both start and end days
+
+                if (days > 14 || days <= 0)
+                {
+                    MessageBox.Show(
+                        "The date range must be between 1 and 14 days. End date has been reset.",
+                        "Invalid Date Range",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+
+                    dtpEndDate.Checked = false;
+                    dtpEndDate.CustomFormat = " ";
+                    EnableDaysOnSiteControl(true);
+                }
+                else
+                {
+                    // Set days on site
+                    NumericUpDown numDaysOnSite = (NumericUpDown)Controls.Find("numDaysOnSite", true)[0];
+                    numDaysOnSite.Value = days;
+                    EnableDaysOnSiteControl(false);
+                }
+            }
+            else if (!dtpStartDate.Checked && dtpEndDate.Checked)
+            {
+                // Calculate start date based on end date and days on site
+                CalculateStartDateFromEnd();
+            }
+        }
+
+        private void CalculateDaysOnSite()
+        {
+            DateTimePicker dtpStartDate = (DateTimePicker)Controls.Find("dtpStartDate", true)[0];
+            DateTimePicker dtpEndDate = (DateTimePicker)Controls.Find("dtpEndDate", true)[0];
+
+            if (dtpStartDate.Checked && dtpEndDate.Checked)
+            {
+                TimeSpan duration = dtpEndDate.Value.Date - dtpStartDate.Value.Date;
+                int days = duration.Days + 1; // Include both start and end days
+
+                NumericUpDown numDaysOnSite = (NumericUpDown)Controls.Find("numDaysOnSite", true)[0];
+                numDaysOnSite.Value = days;
+                EnableDaysOnSiteControl(false);
+            }
+        }
+
+        private void CalculateStartDateFromEnd()
+        {
+            DateTimePicker dtpStartDate = (DateTimePicker)Controls.Find("dtpStartDate", true)[0];
+            DateTimePicker dtpEndDate = (DateTimePicker)Controls.Find("dtpEndDate", true)[0];
+            NumericUpDown numDaysOnSite = (NumericUpDown)Controls.Find("numDaysOnSite", true)[0];
+
+            if (dtpEndDate.Checked && !dtpStartDate.Checked)
+            {
+                // Calculate start date by subtracting days on site - 1
+                int daysOnSite = (int)numDaysOnSite.Value;
+                DateTime startDate = dtpEndDate.Value.Date.AddDays(-(daysOnSite - 1));
+
+                // Set the start date
+                dtpStartDate.Value = startDate;
+                dtpStartDate.Checked = true;
+                dtpStartDate.CustomFormat = "MMMM d, yyyy";
+
+                // Update start day and disable it
+                UpdateStartDayFromDate(startDate);
+            }
+        }
+
+        private void UpdateScheduleDates()
+        {
+            DateTimePicker dtpStartDate = (DateTimePicker)Controls.Find("dtpStartDate", true)[0];
+            NumericUpDown numDaysOnSite = (NumericUpDown)Controls.Find("numDaysOnSite", true)[0];
+            CheckBox chkSeparateTravelTo = (CheckBox)Controls.Find("chkSeparateTravelTo", true)[0];
+            CheckBox chkSeparateTravelFrom = (CheckBox)Controls.Find("chkSeparateTravelFrom", true)[0];
+
+            // Calculate total days
+            int daysOnSite = (int)numDaysOnSite.Value;
+            int totalDays = daysOnSite;
+            if (chkSeparateTravelTo.Checked) totalDays++;
+            if (chkSeparateTravelFrom.Checked) totalDays++;
+
+            // Update day panels
+            for (int i = 0; i < 14; i++)
+            {
+                try
+                {
+                    Panel dayPanel = (Panel)Controls.Find($"dayPanel{i + 1}", true)[0];
+                    Label dayNumLabel = (Label)dayPanel.Controls.Find($"dayNumLabel{i + 1}", false)[0];
+
+                    if (i < totalDays && dtpStartDate.Checked)
+                    {
+                        // Calculate the date for this day
+                        DateTime dayDate;
+
+                        if (chkSeparateTravelTo.Checked && i == 0)
+                        {
+                            // First day is travel day, one day before start date
+                            dayDate = dtpStartDate.Value.Date.AddDays(-1);
+                        }
+                        else if (chkSeparateTravelTo.Checked)
+                        {
+                            // Adjust for separate travel TO day
+                            dayDate = dtpStartDate.Value.Date.AddDays(i - 1);
+                        }
+                        else
+                        {
+                            // No separate travel day, start with the start date
+                            dayDate = dtpStartDate.Value.Date.AddDays(i);
+                        }
+
+                        // Set the day label to show the date
+                        dayNumLabel.Text = dayDate.ToString("MMM d");
+                    }
+                    else
+                    {
+                        // Reset to default "Day X" format
+                        dayNumLabel.Text = $"Day {i + 1}";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error updating day panel {i + 1}: {ex.Message}");
+                }
+            }
         }
 
         private void CreateCalendarSection()
@@ -1164,6 +1487,12 @@ namespace LabourBudgetCalculator
                         System.Diagnostics.Debug.WriteLine($"Error updating day panel {i + 1}: {ex.Message}");
                     }
                 }
+    DateTimePicker dtpStartDate = GetControlSafely<DateTimePicker>("dtpStartDate");
+    if (dtpStartDate != null && dtpStartDate.Checked)
+    {
+        UpdateScheduleDates();
+    }
+
             }
         }
 
@@ -2208,6 +2537,15 @@ namespace LabourBudgetCalculator
                 }
             }
 
+            else if (control is DateTimePicker)
+            {
+                DateTimePicker dateTimePicker = (DateTimePicker)control;
+                dateTimePicker.BackColor = darkPanelBackColor;
+                dateTimePicker.ForeColor = Color.White;
+                dateTimePicker.CalendarForeColor = Color.White;
+                dateTimePicker.CalendarMonthBackground = darkGridBackColor;
+            }
+
             // Recursively apply to child controls
             foreach (Control child in control.Controls)
             {
@@ -2269,6 +2607,14 @@ namespace LabourBudgetCalculator
                     control.ForeColor = Color.DarkBlue; // Original color
                     control.BackColor = Color.Transparent;
                 }
+            }
+            else if (control is DateTimePicker)
+            {
+                DateTimePicker dateTimePicker = (DateTimePicker)control;
+                dateTimePicker.BackColor = SystemColors.Window;
+                dateTimePicker.ForeColor = SystemColors.WindowText;
+                dateTimePicker.CalendarForeColor = SystemColors.WindowText;
+                dateTimePicker.CalendarMonthBackground = SystemColors.Window;
             }
 
             // Recursively apply to child controls
@@ -2815,6 +3161,28 @@ namespace LabourBudgetCalculator
             ((Label)Controls.Find("lblTravelCostValue", true)[0]).Text = "$0.00";
             ((Label)Controls.Find("lblExpensesCostValue", true)[0]).Text = "$0.00";
             ((Label)Controls.Find("lblGrandTotal", true)[0]).Text = "$0.00";
+
+            TextBox txtTechnician = GetControlSafely<TextBox>("txtTechnician");
+            if (txtTechnician != null)
+                txtTechnician.Text = "Technician";
+
+            DateTimePicker dtpStartDate = GetControlSafely<DateTimePicker>("dtpStartDate");
+            if (dtpStartDate != null)
+            {
+                dtpStartDate.Checked = false;
+                dtpStartDate.CustomFormat = " ";
+            }
+
+            DateTimePicker dtpEndDate = GetControlSafely<DateTimePicker>("dtpEndDate");
+            if (dtpEndDate != null)
+            {
+                dtpEndDate.Checked = false;
+                dtpEndDate.CustomFormat = " ";
+            }
+
+            // Enable days on site and start day controls
+            EnableDaysOnSiteControl(true);
+            EnableStartDayControl(true);
 
             // Clear datagrid
             DataGridView dataGridViewDays = (DataGridView)Controls.Find("dataGridViewDays", true)[0];
