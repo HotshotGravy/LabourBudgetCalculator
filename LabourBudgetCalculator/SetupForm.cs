@@ -26,7 +26,7 @@ namespace TimeExpenseCalculator.Forms
 
             // Set form properties that weren't set in the designer
             this.Text = "Rate Sheet Setup";
-            this.Size = new Size(600, 500);
+            this.Size = new Size(600, 700);
             this.StartPosition = FormStartPosition.CenterParent;
 
             // Make a deep copy of the rate sheets
@@ -62,7 +62,7 @@ namespace TimeExpenseCalculator.Forms
         {
             // Set form properties
             this.Text = "Rate Sheet Setup";
-            this.Size = new Size(600, 500);
+            this.Size = new Size(600, 600);
             this.StartPosition = FormStartPosition.CenterParent;
 
             // Create list box for rate sheets

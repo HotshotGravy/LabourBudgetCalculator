@@ -81,10 +81,12 @@ namespace LabourBudgetCalculator
         private void MainForm_Load(object sender, EventArgs e)
         {
             // Set minimum size to ensure all controls are visible
-            this.MinimumSize = new Size(1000, 750);
+            // this.MinimumSize = new Size(1450, 920);
+            this.Size = new Size(1380, 850);
+            //this.MinimumSize = new Size(1380, 850);
 
             // Make the form resizable
-            this.FormBorderStyle = FormBorderStyle.Sizable;
+            this.FormBorderStyle = FormBorderStyle.Fixed3D;
 
             // Add anchoring to key controls
             GroupBox groupBoxResults = (GroupBox)Controls.Find("groupBoxResults", true)[0];
@@ -398,8 +400,8 @@ namespace LabourBudgetCalculator
             {
                 Name = "groupBoxExpenses",
                 Text = "Expenses",
-                Location = new Point(25, 486),
-                Size = new Size(420, 308)
+                Location = new Point(25, 485),
+                Size = new Size(420, 310)
             };
             this.Controls.Add(groupBoxExpenses);
 
@@ -986,7 +988,7 @@ namespace LabourBudgetCalculator
                 Name = "groupBoxResults",
                 Text = "Results",
                 Location = new Point(460, 445),
-                Size = new Size(880, 350), // Reduced height for better visibility
+                Size = new Size(938, 350), // Reduced height for better visibility
                 Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right
             };
             this.Controls.Add(groupBoxResults);
