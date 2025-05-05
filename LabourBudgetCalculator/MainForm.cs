@@ -333,7 +333,7 @@ namespace LabourBudgetCalculator
             };
 
             // Travel Distance
-            Label lblTravelDistance = new Label { Text = "Travel Distance to Site Area or Airport:", Location = new Point(20, 90), AutoSize = true };
+            Label lblTravelDistance = new Label { Text = "Driving Distance (First and Last Days Only):", Location = new Point(20, 90), AutoSize = true };
             NumericUpDown numTravelDistance = new NumericUpDown
             {
                 Name = "numTravelDistance",
@@ -357,7 +357,7 @@ namespace LabourBudgetCalculator
             Label lblTravelTimeUnit = new Label { Text = "Hours", Location = new Point(335, 120), AutoSize = true };
 
             // Daily Travel Distance
-            Label lblDailyTravelDistance = new Label { Text = "Daily Travel Distance (Round Trip):", Location = new Point(20, 150), AutoSize = true };
+            Label lblDailyTravelDistance = new Label { Text = "Daily Driving Distance (One Way):", Location = new Point(20, 150), AutoSize = true };
 
             NumericUpDown numDailyTravelDistance = new NumericUpDown
             {
@@ -365,20 +365,20 @@ namespace LabourBudgetCalculator
                 Location = new Point(255, 147),
                 Size = new Size(75, 25),
                 Maximum = 1000,
-                Increment = 30m
+                Increment = 15m
             };
             Label lblDailyTravelDistanceUnit = new Label { Text = "Miles", Location = new Point(335, 150), AutoSize = true };
 
             // Daily Travel Time
-            Label lblDailyTravelTime = new Label { Text = "Daily Travel Time (Round Trip):", Location = new Point(20, 180), AutoSize = true };
+            Label lblDailyTravelTime = new Label { Text = "Daily Travel Time (One way):", Location = new Point(20, 180), AutoSize = true };
             NumericUpDown numDailyTravelTime = new NumericUpDown
             {
                 Name = "numDailyTravelTime",
                 Location = new Point(255, 177),
                 Size = new Size(75, 25),
                 Maximum = 24,
-                Increment = 0.5m,   // Add this line
-                DecimalPlaces = 1
+                Increment = 0.25m,   
+                DecimalPlaces = 2
             };
             Label lblDailyTravelTimeUnit = new Label { Text = "Hours", Location = new Point(335, 180), AutoSize = true };
 
@@ -1459,7 +1459,9 @@ namespace LabourBudgetCalculator
                             dayPanel.BackColor = isDarkMode ? darkModeWorkDay : Color.LightBlue;
 
                             // Default to daily travel time
-                            travelHours = dailyTravelTime;
+                            travelHours = dailyTravelTime *2;
+
+                            decimal displayTravelTime = travelHours;
 
                             // Check for first day without separate travel TO
                             if (!chkSeparateTravelTo.Checked && i == 0 && travelTimeToSite > 0)
@@ -1473,6 +1475,16 @@ namespace LabourBudgetCalculator
                                 // Last day gets the site travel time
                                 travelHours = travelTimeToSite;
                             }
+                            else
+                            {
+                                // For regular work days (not first/last day special cases)
+                                // Double the daily travel time for calculation
+                                travelHours = dailyTravelTime * 2;
+                            }
+
+                            // Update display and tag
+                            travelHoursLabel.Text = $"Travel: {displayTravelTime} hrs";
+                            travelHoursLabel.Tag = travelHours.ToString();
 
                             laborHours = hoursPerDay;
                         }
@@ -1860,78 +1872,7 @@ namespace LabourBudgetCalculator
             numMileageRate.ValueChanged += (s, e) => CalculateAndDisplayResults();
             numPerDiem.ValueChanged += (s, e) => CalculateAndDisplayResults();
         }
-        private void AdjustLayoutForCurrentSize()
-        {
-            try
-            {
-                // Find the results group box safely
-                GroupBox groupBoxResults = null;
-                foreach (Control c in this.Controls)
-                {
-                    if (c is GroupBox && c.Name == "groupBoxResults")
-                    {
-                        groupBoxResults = c as GroupBox;
-                        break;
-                    }
-                }
-
-                if (groupBoxResults == null)
-                    return;
-
-                // Adjust height more conservatively
-                groupBoxResults.Height = Math.Min(450, this.ClientSize.Height - groupBoxResults.Location.Y - 20);
-
-                // Find the grand total panel more safely
-                Panel grandTotalPanel = null;
-                foreach (Control c in groupBoxResults.Controls)
-                {
-                    if (c is Panel && c.Controls.Count > 0)
-                    {
-                        foreach (Control panelControl in c.Controls)
-                        {
-                            if (panelControl is Label && panelControl.Name == "lblGrandTotal")
-                            {
-                                grandTotalPanel = c as Panel;
-                                break;
-                            }
-                        }
-                        if (grandTotalPanel != null) break;
-                    }
-                }
-
-                if (grandTotalPanel != null)
-                {
-                    // Use more conservative positioning
-                    int newX = Math.Max(groupBoxResults.Width - grandTotalPanel.Width - 20, 400);
-                    int newY = Math.Min(40, groupBoxResults.Height / 5);
-                    grandTotalPanel.Location = new Point(newX, newY);
-
-                    // Find the Reset button safely
-                    Button btnReset = null;
-                    foreach (Control c in groupBoxResults.Controls)
-                    {
-                        if (c is Button && c.Name == "btnReset")
-                        {
-                            btnReset = c as Button;
-                            break;
-                        }
-                    }
-
-                    // Position Reset button if found
-                    if (btnReset != null)
-                    {
-                        btnReset.Location = new Point(
-                            grandTotalPanel.Location.X + (grandTotalPanel.Width - btnReset.Width) / 2,
-                            grandTotalPanel.Location.Y + grandTotalPanel.Height + 10);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                // Log error but don't crash
-                System.Diagnostics.Debug.WriteLine($"Error adjusting layout: {ex.Message}");
-            }
-        }
+       
         private void DisplayRateSheet()
         {
             if (currentRateSheet == null)
@@ -2261,7 +2202,7 @@ namespace LabourBudgetCalculator
                             // For middle days, only apply mileage if:
                             // 1. Travel method is Driving AND
                             // 2. Not using a rental car
-                            dayMileage = mileageRate * dailyTravelDistance;
+                            dayMileage = mileageRate * (dailyTravelDistance *2);
                         }
 
                         // TRAVEL TIME SUPERSEDING LOGIC
@@ -2829,12 +2770,11 @@ namespace LabourBudgetCalculator
                     // Look for the labels within the travel group
                     foreach (Control c in travelGroup.Controls)
                     {
-                        if (c is Label && c.Text.Contains("Travel Distance to Site Area"))
+                        if (c is Label && c.Text.Contains("Driving Distance (First and Last Days Only"))
                         {
                             // Apply tooltip to travel distance label
                             toolTip.SetToolTip(c,
-                                "This is usually for separate travel days, and includes distance to car rental location. " +
-                                "If there is no separate travel day, this distance will supersede the daily travel distance for that day");
+                                "Distance to site, car rental location or airport. ");
 
                             System.Diagnostics.Debug.WriteLine("Tooltip applied to: " + c.Text);
                         }
