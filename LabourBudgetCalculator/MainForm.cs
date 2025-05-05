@@ -13,6 +13,9 @@ using TimeExpenseCalculator.Forms;
 using System.IO;
 using System.Xml;
 
+using OfficeOpenXml;
+using OfficeOpenXml.Style;
+
 namespace LabourBudgetCalculator
 {
     public partial class MainForm : Form
@@ -495,6 +498,19 @@ namespace LabourBudgetCalculator
                 }
             };
 
+            // Add Export button below Setup Rate Sheets
+            Button btnExport = new Button
+            {
+                Name = "btnExport",
+                Text = "Export to Excel",
+                Location = new Point(20, 220), // Positioned below Setup button
+                Size = new Size(150, 25)
+            };
+
+            // Add the export button click handler
+            btnExport.Click += (sender, e) => ExportToExcel();
+
+
             btnDarkMode = new Button
             {
                 Name = "btnDarkMode",
@@ -516,7 +532,7 @@ namespace LabourBudgetCalculator
         lblHotelCost, numHotelCost, lblHotelCostUnit,
         lblMileageRate, numMileageRate, lblMileageRateUnit,
         lblPerDiem, numPerDiem, lblPerDiemUnit,
-        btnSetup, btnReset, btnDarkMode 
+        btnSetup, btnReset, btnDarkMode,btnExport
     });
         }
 
@@ -3069,6 +3085,780 @@ namespace LabourBudgetCalculator
                 }
             }
         }
+        private void ExportToExcel()
+        {
+            // Create save file dialog
+            SaveFileDialog saveDialog = new SaveFileDialog();
+            saveDialog.Filter = "Excel Files (*.xlsx)|*.xlsx";
+            saveDialog.Title = "Export Time & Expense Report";
+            saveDialog.DefaultExt = "xlsx";
+            saveDialog.FileName = $"Time_Expense_Report_{DateTime.Now:yyyy-MM-dd}";
+
+            // Show dialog and handle result
+            if (saveDialog.ShowDialog() == DialogResult.OK)
+            {
+                try
+                {
+                    // Set license context
+                   // ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+
+                    using (var package = new ExcelPackage())
+                    {
+                        CreateSummarySheet(package);
+                        CreateDetailSheet(package);
+                        CreateRatesSheet(package);
+
+                        // Save the Excel package to file
+                        var fileInfo = new FileInfo(saveDialog.FileName);
+                        package.SaveAs(fileInfo);
+
+                        MessageBox.Show("Report exported successfully!", "Success",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Error exporting to Excel: {ex.Message}", "Export Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        private void CreateSummarySheet(ExcelPackage package)
+        {
+            var summarySheet = package.Workbook.Worksheets.Add("Summary");
+
+            // Add header information
+            summarySheet.Cells[1, 1].Value = "Time & Expense Report";
+            summarySheet.Cells[1, 1].Style.Font.Size = 16;
+            summarySheet.Cells[1, 1].Style.Font.Bold = true;
+
+            // Get technician name
+            string technicianName = GetControlSafely<TextBox>("txtTechnician")?.Text ?? "Not specified";
+            summarySheet.Cells[3, 1].Value = "Technician:";
+            summarySheet.Cells[3, 2].Value = technicianName;
+
+            // Get date range
+            DateTimePicker dtpStartDate = GetControlSafely<DateTimePicker>("dtpStartDate");
+            DateTimePicker dtpEndDate = GetControlSafely<DateTimePicker>("dtpEndDate");
+            string dateRange = "Not specified";
+
+            if (dtpStartDate != null && dtpEndDate != null)
+            {
+                if (dtpStartDate.Checked && dtpEndDate.Checked)
+                    dateRange = $"{dtpStartDate.Value:MMM d, yyyy} - {dtpEndDate.Value:MMM d, yyyy}";
+                else if (dtpStartDate.Checked)
+                    dateRange = $"{dtpStartDate.Value:MMM d, yyyy} onwards";
+                else if (dtpEndDate.Checked)
+                    dateRange = $"Until {dtpEndDate.Value:MMM d, yyyy}";
+            }
+
+            summarySheet.Cells[4, 1].Value = "Date Range:";
+            summarySheet.Cells[4, 2].Value = dateRange;
+
+            // Add rate sheet info
+            ComboBox rateSheetCombo = GetControlSafely<ComboBox>("comboBoxRateSheet");
+            summarySheet.Cells[5, 1].Value = "Rate Sheet:";
+            summarySheet.Cells[5, 2].Value = rateSheetCombo?.SelectedItem?.ToString() ?? "Default";
+
+            // Get discount and emergency status
+            decimal discount = GetNumericValueSafely("numDiscount");
+            bool emergency = GetControlSafely<CheckBox>("chkEmergency")?.Checked ?? false;
+
+            summarySheet.Cells[6, 1].Value = "Discount Applied:";
+            summarySheet.Cells[6, 2].Value = $"{discount}%";
+
+            summarySheet.Cells[7, 1].Value = "Emergency Rates:";
+            summarySheet.Cells[7, 2].Value = emergency ? "Yes" : "No";
+
+            // Add labor breakdown
+            summarySheet.Cells[9, 1].Value = "HOURS BREAKDOWN";
+            summarySheet.Cells[9, 1].Style.Font.Bold = true;
+
+            summarySheet.Cells[10, 1].Value = "Category";
+            summarySheet.Cells[10, 2].Value = "Regular Rate";
+            summarySheet.Cells[10, 3].Value = "Overtime Rate";
+            summarySheet.Cells[10, 4].Value = "Premium Rate";
+            summarySheet.Cells[10, 5].Value = "Total";
+
+            // Format headers
+            var headerRange = summarySheet.Cells[10, 1, 10, 5];
+            headerRange.Style.Font.Bold = true;
+            headerRange.Style.Fill.PatternType = ExcelFillStyle.Solid;
+            headerRange.Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+            // Calculate hours by rate
+            CalculateHoursByRate(out decimal regularLaborHours, out decimal overtimeLaborHours,
+                out decimal premiumLaborHours, out decimal regularTravelHours,
+                out decimal overtimeTravelHours, out decimal premiumTravelHours);
+
+            // Add labor hours
+            summarySheet.Cells[11, 1].Value = "Labor Hours";
+            summarySheet.Cells[11, 2].Value = regularLaborHours;
+            summarySheet.Cells[11, 3].Value = overtimeLaborHours;
+            summarySheet.Cells[11, 4].Value = premiumLaborHours;
+            summarySheet.Cells[11, 5].Value = regularLaborHours + overtimeLaborHours + premiumLaborHours;
+
+            // Add travel hours
+            summarySheet.Cells[12, 1].Value = "Travel Hours";
+            summarySheet.Cells[12, 2].Value = regularTravelHours;
+            summarySheet.Cells[12, 3].Value = overtimeTravelHours;
+            summarySheet.Cells[12, 4].Value = premiumTravelHours;
+            summarySheet.Cells[12, 5].Value = regularTravelHours + overtimeTravelHours + premiumTravelHours;
+
+            // Add totals row
+            summarySheet.Cells[13, 1].Value = "Total Hours";
+            summarySheet.Cells[13, 2].Value = regularLaborHours + regularTravelHours;
+            summarySheet.Cells[13, 3].Value = overtimeLaborHours + overtimeTravelHours;
+            summarySheet.Cells[13, 4].Value = premiumLaborHours + premiumTravelHours;
+            summarySheet.Cells[13, 5].Value = regularLaborHours + overtimeLaborHours + premiumLaborHours +
+                                            regularTravelHours + overtimeTravelHours + premiumTravelHours;
+
+            // Format totals row
+            var totalsRange = summarySheet.Cells[13, 1, 13, 5];
+            totalsRange.Style.Font.Bold = true;
+
+            // Add cost breakdown
+            decimal regularLabourRate = GetNumericValueSafely("txtRegularLabour");
+            decimal overtimeLabourRate = GetNumericValueSafely("txtOvertimeLabour");
+            decimal premiumLabourRate = GetNumericValueSafely("txtPremiumLabour");
+            decimal regularTravelRate = GetNumericValueSafely("txtRegularTravel");
+            decimal overtimeTravelRate = GetNumericValueSafely("txtOvertimeTravel");
+            decimal premiumTravelRate = GetNumericValueSafely("txtPremiumTravel");
+
+            // Calculate costs
+            decimal laborRegularCost = regularLaborHours * regularLabourRate;
+            decimal laborOvertimeCost = overtimeLaborHours * overtimeLabourRate;
+            decimal laborPremiumCost = premiumLaborHours * premiumLabourRate;
+            decimal travelRegularCost = regularTravelHours * regularTravelRate;
+            decimal travelOvertimeCost = overtimeTravelHours * overtimeTravelRate;
+            decimal travelPremiumCost = premiumTravelHours * premiumTravelRate;
+
+            // Apply discount if any
+            decimal discountMultiplier = 1.0m;
+            if (discount > 0)
+            {
+                discountMultiplier = 1 - (discount / 100);
+                laborRegularCost *= discountMultiplier;
+                laborOvertimeCost *= discountMultiplier;
+                laborPremiumCost *= discountMultiplier;
+                travelRegularCost *= discountMultiplier;
+                travelOvertimeCost *= discountMultiplier;
+                travelPremiumCost *= discountMultiplier;
+            }
+
+            // Add cost section
+            summarySheet.Cells[15, 1].Value = "COST BREAKDOWN";
+            summarySheet.Cells[15, 1].Style.Font.Bold = true;
+
+            summarySheet.Cells[16, 1].Value = "Category";
+            summarySheet.Cells[16, 2].Value = "Regular Rate";
+            summarySheet.Cells[16, 3].Value = "Overtime Rate";
+            summarySheet.Cells[16, 4].Value = "Premium Rate";
+            summarySheet.Cells[16, 5].Value = "Total";
+
+            // Format cost headers
+            var costHeaderRange = summarySheet.Cells[16, 1, 16, 5];
+            costHeaderRange.Style.Font.Bold = true;
+            costHeaderRange.Style.Fill.PatternType = ExcelFillStyle.Solid;
+            costHeaderRange.Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+            // Add labor costs
+            summarySheet.Cells[17, 1].Value = "Labor Cost";
+            summarySheet.Cells[17, 2].Value = laborRegularCost;
+            summarySheet.Cells[17, 3].Value = laborOvertimeCost;
+            summarySheet.Cells[17, 4].Value = laborPremiumCost;
+            summarySheet.Cells[17, 5].Value = laborRegularCost + laborOvertimeCost + laborPremiumCost;
+
+            // Add travel costs
+            summarySheet.Cells[18, 1].Value = "Travel Cost";
+            summarySheet.Cells[18, 2].Value = travelRegularCost;
+            summarySheet.Cells[18, 3].Value = travelOvertimeCost;
+            summarySheet.Cells[18, 4].Value = travelPremiumCost;
+            summarySheet.Cells[18, 5].Value = travelRegularCost + travelOvertimeCost + travelPremiumCost;
+
+            // Add expense totals
+            decimal hotelTotal = 0;
+            decimal rentalTotal = 0;
+            decimal flightTotal = 0;
+            decimal mileageTotal = 0;
+            decimal perDiemTotal = 0;
+
+            DataGridView dataGrid = GetControlSafely<DataGridView>("dataGridViewDays");
+            if (dataGrid != null)
+            {
+                foreach (DataGridViewRow row in dataGrid.Rows)
+                {
+                    if (row.Cells["Hotel"].Value != null)
+                        hotelTotal += Convert.ToDecimal(row.Cells["Hotel"].Value);
+
+                    if (row.Cells["Rental"].Value != null)
+                        rentalTotal += Convert.ToDecimal(row.Cells["Rental"].Value);
+
+                    if (row.Cells["Flight"].Value != null)
+                        flightTotal += Convert.ToDecimal(row.Cells["Flight"].Value);
+
+                    if (row.Cells["Mileage"].Value != null)
+                        mileageTotal += Convert.ToDecimal(row.Cells["Mileage"].Value);
+
+                    if (row.Cells["PerDiem"].Value != null)
+                        perDiemTotal += Convert.ToDecimal(row.Cells["PerDiem"].Value);
+                }
+            }
+
+            // Add expenses section
+            summarySheet.Cells[20, 1].Value = "EXPENSES SUMMARY";
+            summarySheet.Cells[20, 1].Style.Font.Bold = true;
+
+            summarySheet.Cells[21, 1].Value = "Category";
+            summarySheet.Cells[21, 2].Value = "Amount";
+
+            // Format expense headers
+            var expenseHeaderRange = summarySheet.Cells[21, 1, 21, 2];
+            expenseHeaderRange.Style.Font.Bold = true;
+            expenseHeaderRange.Style.Fill.PatternType = ExcelFillStyle.Solid;
+            expenseHeaderRange.Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+            // Add expense items
+            summarySheet.Cells[22, 1].Value = "Hotel:";
+            summarySheet.Cells[22, 2].Value = hotelTotal;
+
+            summarySheet.Cells[23, 1].Value = "Rental Car:";
+            summarySheet.Cells[23, 2].Value = rentalTotal;
+
+            summarySheet.Cells[24, 1].Value = "Flights:";
+            summarySheet.Cells[24, 2].Value = flightTotal;
+
+            summarySheet.Cells[25, 1].Value = "Mileage:";
+            summarySheet.Cells[25, 2].Value = mileageTotal;
+
+            summarySheet.Cells[26, 1].Value = "Per Diem:";
+            summarySheet.Cells[26, 2].Value = perDiemTotal;
+
+            // Add expense 10% markup note
+            decimal expensesWithMarkup = (hotelTotal + rentalTotal + flightTotal) * 1.1m + mileageTotal;
+            summarySheet.Cells[27, 1].Value = "Expense Total (incl. 10% markup on applicable items):";
+            summarySheet.Cells[27, 2].Value = expensesWithMarkup;
+            summarySheet.Cells[27, 1, 27, 2].Style.Font.Bold = true;
+
+            // Add grand total
+            summarySheet.Cells[29, 1].Value = "GRAND TOTAL:";
+            summarySheet.Cells[29, 1].Style.Font.Bold = true;
+            summarySheet.Cells[29, 1].Style.Font.Size = 12;
+
+            decimal grandTotal = laborRegularCost + laborOvertimeCost + laborPremiumCost +
+                                 travelRegularCost + travelOvertimeCost + travelPremiumCost +
+                                 expensesWithMarkup + perDiemTotal;
+
+            summarySheet.Cells[29, 2].Value = grandTotal;
+            summarySheet.Cells[29, 2].Style.Font.Bold = true;
+            summarySheet.Cells[29, 2].Style.Font.Size = 12;
+
+            // Format currency cells
+            var currencyRanges = new List<ExcelRange> {
+        summarySheet.Cells[17, 2, 18, 5],
+        summarySheet.Cells[22, 2, 27, 2],
+        summarySheet.Cells[29, 2]
+    };
+
+            foreach (var range in currencyRanges)
+            {
+                range.Style.Numberformat.Format = "$#,##0.00";
+            }
+
+            // Format hour cells
+            summarySheet.Cells[11, 2, 13, 5].Style.Numberformat.Format = "#,##0.0";
+
+            // Auto-fit all columns
+            summarySheet.Cells[summarySheet.Dimension.Address].AutoFitColumns();
+        }
+
+        private void CreateDetailSheet(ExcelPackage package)
+        {
+            var detailSheet = package.Workbook.Worksheets.Add("Daily Breakdown");
+
+            // Add headers
+            detailSheet.Cells[1, 1].Value = "Day";
+            detailSheet.Cells[1, 2].Value = "Date";
+            detailSheet.Cells[1, 3].Value = "Day of Week";
+
+            // Labor columns with sub-columns
+            detailSheet.Cells[1, 4].Value = "Labor Hours (Reg)";
+            detailSheet.Cells[1, 5].Value = "Labor Hours (OT)";
+            detailSheet.Cells[1, 6].Value = "Labor Hours (Prem)";
+            detailSheet.Cells[1, 7].Value = "Labor Cost";
+
+            // Travel columns with sub-columns
+            detailSheet.Cells[1, 8].Value = "Travel Hours (Reg)";
+            detailSheet.Cells[1, 9].Value = "Travel Hours (OT)";
+            detailSheet.Cells[1, 10].Value = "Travel Hours (Prem)";
+            detailSheet.Cells[1, 11].Value = "Travel Cost";
+
+            // Expense columns
+            detailSheet.Cells[1, 12].Value = "Mileage";
+            detailSheet.Cells[1, 13].Value = "Hotel";
+            detailSheet.Cells[1, 14].Value = "Rental";
+            detailSheet.Cells[1, 15].Value = "Flight";
+            detailSheet.Cells[1, 16].Value = "Per Diem";
+            detailSheet.Cells[1, 17].Value = "Daily Total";
+
+            // Format header row
+            var headerRange = detailSheet.Cells[1, 1, 1, 17];
+            headerRange.Style.Font.Bold = true;
+            headerRange.Style.Fill.PatternType = ExcelFillStyle.Solid;
+            headerRange.Style.Fill.BackgroundColor.SetColor(Color.LightGray);
+
+            // Get required data
+            DateTimePicker dtpStartDate = GetControlSafely<DateTimePicker>("dtpStartDate");
+            ComboBox comboBoxStartDay = GetControlSafely<ComboBox>("comboBoxStartDay");
+            int startDayIndex = comboBoxStartDay?.SelectedIndex ?? 0;
+            string[] dayNames = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" };
+
+            // Get labor rates
+            decimal regularLabourRate = GetNumericValueSafely("txtRegularLabour");
+            decimal overtimeLabourRate = GetNumericValueSafely("txtOvertimeLabour");
+            decimal premiumLabourRate = GetNumericValueSafely("txtPremiumLabour");
+            decimal regularTravelRate = GetNumericValueSafely("txtRegularTravel");
+            decimal overtimeTravelRate = GetNumericValueSafely("txtOvertimeTravel");
+            decimal premiumTravelRate = GetNumericValueSafely("txtPremiumTravel");
+
+            // Check for emergency rates
+            bool emergencyRate = GetControlSafely<CheckBox>("chkEmergency")?.Checked ?? false;
+
+            // Apply discount if any
+            decimal discount = GetNumericValueSafely("numDiscount");
+            decimal discountMultiplier = 1.0m;
+            if (discount > 0)
+            {
+                discountMultiplier = 1 - (discount / 100);
+            }
+
+            // Add day data from data grid
+            DataGridView dataGrid = GetControlSafely<DataGridView>("dataGridViewDays");
+            if (dataGrid != null)
+            {
+                int row = 2; // Start at row 2
+
+                foreach (DataGridViewRow gridRow in dataGrid.Rows)
+                {
+                    try
+                    {
+                        // Safely get the day value with null check
+                        string dayText = gridRow.Cells["Day"].Value?.ToString() ?? "Day 0";
+
+                        // Extract day number with safer parsing
+                        int dayNumber = 0;
+                        if (dayText.StartsWith("Day "))
+                        {
+                            int.TryParse(dayText.Replace("Day ", ""), out dayNumber);
+                        }
+
+                        // Skip rows with invalid day numbers
+                        if (dayNumber <= 0)
+                        {
+                            continue;
+                        }
+
+                        // Calculate day of week
+                        int dayOfWeekIndex = (startDayIndex + dayNumber - 1) % 7;
+                        string dayOfWeek = dayNames[dayOfWeekIndex];
+
+                        // Determine if weekend
+                        bool isWeekend = (dayOfWeekIndex == 5 || dayOfWeekIndex == 6);
+
+                        // Get the panel for this day - add null check
+                        Panel dayPanel = Controls.Find($"dayPanel{dayNumber}", true).FirstOrDefault() as Panel;
+                        if (dayPanel == null) continue;
+
+                        // Basic day info
+                        detailSheet.Cells[row, 1].Value = dayText;
+
+                        // Get date if available
+                        if (dtpStartDate != null && dtpStartDate.Checked)
+                        {
+                            DateTime baseDate = dtpStartDate.Value;
+                            // Adjust for travel day if necessary
+                            if (GetControlSafely<CheckBox>("chkSeparateTravelTo")?.Checked ?? false)
+                                baseDate = baseDate.AddDays(-1);
+
+                            detailSheet.Cells[row, 2].Value = baseDate.AddDays(dayNumber - 1).ToString("MMM d, yyyy");
+                        }
+
+                        detailSheet.Cells[row, 3].Value = dayOfWeek;
+
+                        // Get hours from day panel with null checks
+                        Label laborHoursLabel = dayPanel.Controls.Find($"laborHoursLabel{dayNumber}", false).FirstOrDefault() as Label;
+                        Label travelHoursLabel = dayPanel.Controls.Find($"travelHoursLabel{dayNumber}", false).FirstOrDefault() as Label;
+
+                        decimal laborHours = 0;
+                        decimal travelHours = 0;
+
+                        if (laborHoursLabel != null)
+                            decimal.TryParse(laborHoursLabel.Tag?.ToString() ?? "0", out laborHours);
+
+                        if (travelHoursLabel != null)
+                            decimal.TryParse(travelHoursLabel.Tag?.ToString() ?? "0", out travelHours);
+
+                        // Calculate hours by rate type
+                        decimal regularLaborHours = 0;
+                        decimal overtimeLaborHours = 0;
+                        decimal premiumLaborHours = 0;
+                        decimal regularTravelHours = 0;
+                        decimal overtimeTravelHours = 0;
+                        decimal premiumTravelHours = 0;
+
+                        // Check panel color safely
+                        bool isHoldoverDay = false;
+                        if (dayPanel != null)
+                        {
+                            isHoldoverDay = (dayPanel.BackColor == Color.LightGreen ||
+                                           (isDarkMode && dayPanel.BackColor == darkModeHoldoverDay));
+                        }
+
+                        // Apply rate logic
+                        if (emergencyRate)
+                        {
+                            // All hours at premium rate
+                            premiumLaborHours = laborHours;
+                            premiumTravelHours = travelHours;
+                        }
+                        else if (isHoldoverDay)
+                        {
+                            // Holdover days are all regular rate
+                            regularLaborHours = laborHours;
+                            regularTravelHours = travelHours;
+                        }
+                        else if (dayOfWeekIndex == 5) // Saturday
+                        {
+                            // All hours at overtime rate
+                            overtimeLaborHours = laborHours;
+                            overtimeTravelHours = travelHours;
+                        }
+                        else if (dayOfWeekIndex == 6) // Sunday
+                        {
+                            // All hours at premium rate
+                            premiumLaborHours = laborHours;
+                            premiumTravelHours = travelHours;
+                        }
+                        else // Weekday
+                        {
+                            // Regular hours (max 8), then overtime
+                            regularLaborHours = Math.Min(8, laborHours);
+                            overtimeLaborHours = Math.Max(0, laborHours - 8);
+
+                            regularTravelHours = Math.Min(8, travelHours);
+                            overtimeTravelHours = Math.Max(0, travelHours - 8);
+                        }
+
+                        // Add hours breakdown
+                        detailSheet.Cells[row, 4].Value = regularLaborHours;
+                        detailSheet.Cells[row, 5].Value = overtimeLaborHours;
+                        detailSheet.Cells[row, 6].Value = premiumLaborHours;
+
+                        detailSheet.Cells[row, 8].Value = regularTravelHours;
+                        detailSheet.Cells[row, 9].Value = overtimeTravelHours;
+                        detailSheet.Cells[row, 10].Value = premiumTravelHours;
+
+                        // Calculate costs
+                        decimal laborCost = (regularLaborHours * regularLabourRate +
+                                          overtimeLaborHours * overtimeLabourRate +
+                                          premiumLaborHours * premiumLabourRate) * discountMultiplier;
+
+                        decimal travelCost = (regularTravelHours * regularTravelRate +
+                                            overtimeTravelHours * overtimeTravelRate +
+                                            premiumTravelHours * premiumTravelRate) * discountMultiplier;
+
+                        // Add costs from data grid with null checks
+                        detailSheet.Cells[row, 7].Value = laborCost;
+                        detailSheet.Cells[row, 11].Value = travelCost;
+                        detailSheet.Cells[row, 12].Value = gridRow.Cells["Mileage"].Value ?? 0;
+                        detailSheet.Cells[row, 13].Value = gridRow.Cells["Hotel"].Value ?? 0;
+                        detailSheet.Cells[row, 14].Value = gridRow.Cells["Rental"].Value ?? 0;
+                        detailSheet.Cells[row, 15].Value = gridRow.Cells["Flight"].Value ?? 0;
+                        detailSheet.Cells[row, 16].Value = gridRow.Cells["PerDiem"].Value ?? 0;
+                        detailSheet.Cells[row, 17].Value = gridRow.Cells["Total"].Value ?? 0;
+
+                        // Format weekend days
+                        if (isWeekend)
+                        {
+                            detailSheet.Cells[row, 3].Style.Font.Bold = true;
+                            if (isHoldoverDay)
+                            {
+                                // Highlight holdover days
+                                detailSheet.Cells[row, 1, row, 17].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                                detailSheet.Cells[row, 1, row, 17].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
+                            }
+                        }
+
+                        row++;
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Error processing row: {ex.Message}");
+                        // Continue to next row instead of failing the entire export
+                    }
+                }
+
+                // Add totals row
+                int totalRow = row;
+                detailSheet.Cells[totalRow, 1].Value = "TOTALS";
+                detailSheet.Cells[totalRow, 1].Style.Font.Bold = true;
+
+                // Sum columns
+                for (int col = 4; col <= 17; col++)
+                {
+                    // Create sum formula
+                    if (col >= 4) // Skip first 3 columns (Day, Date, Day of Week)
+                    {
+                        detailSheet.Cells[totalRow, col].Formula = $"SUM({GetExcelColumnLetter(col)}2:{GetExcelColumnLetter(col)}{totalRow - 1})";
+                        detailSheet.Cells[totalRow, col].Style.Font.Bold = true;
+                    }
+                }
+            }
+
+            // Format number columns
+            detailSheet.Cells[2, 4, detailSheet.Dimension.End.Row, 10].Style.Numberformat.Format = "#,##0.0";
+
+            // Format currency columns
+            detailSheet.Cells[2, 7, detailSheet.Dimension.End.Row, 7].Style.Numberformat.Format = "$#,##0.00";
+            detailSheet.Cells[2, 11, detailSheet.Dimension.End.Row, 17].Style.Numberformat.Format = "$#,##0.00";
+
+            // Auto-fit all columns
+            detailSheet.Cells[detailSheet.Dimension.Address].AutoFitColumns();
+        }
+
+        private void CreateRatesSheet(ExcelPackage package)
+        {
+            var ratesSheet = package.Workbook.Worksheets.Add("Rates & Configuration");
+
+            // Add rate information
+            ratesSheet.Cells[1, 1].Value = "RATE INFORMATION";
+            ratesSheet.Cells[1, 1].Style.Font.Bold = true;
+            ratesSheet.Cells[1, 1].Style.Font.Size = 12;
+
+            // Add labor rates
+            ratesSheet.Cells[2, 1].Value = "Regular Labour Rate:";
+            ratesSheet.Cells[2, 2].Value = GetNumericValueSafely("txtRegularLabour");
+
+            ratesSheet.Cells[3, 1].Value = "Overtime Labour Rate:";
+            ratesSheet.Cells[3, 2].Value = GetNumericValueSafely("txtOvertimeLabour");
+            ratesSheet.Cells[4, 1].Value = "Premium Labour Rate:";
+            ratesSheet.Cells[4, 2].Value = GetNumericValueSafely("txtPremiumLabour");
+
+            // Add travel rates
+            ratesSheet.Cells[5, 1].Value = "Regular Travel Rate:";
+            ratesSheet.Cells[5, 2].Value = GetNumericValueSafely("txtRegularTravel");
+
+            ratesSheet.Cells[6, 1].Value = "Overtime Travel Rate:";
+            ratesSheet.Cells[6, 2].Value = GetNumericValueSafely("txtOvertimeTravel");
+
+            ratesSheet.Cells[7, 1].Value = "Premium Travel Rate:";
+            ratesSheet.Cells[7, 2].Value = GetNumericValueSafely("txtPremiumTravel");
+
+            // Add expense rates
+            ratesSheet.Cells[9, 1].Value = "EXPENSE CONFIGURATION";
+            ratesSheet.Cells[9, 1].Style.Font.Bold = true;
+            ratesSheet.Cells[9, 1].Style.Font.Size = 12;
+
+            ratesSheet.Cells[10, 1].Value = "Hotel Cost:";
+            ratesSheet.Cells[10, 2].Value = GetNumericValueSafely("numHotelCost");
+
+            ratesSheet.Cells[11, 1].Value = "Rental Car Cost:";
+            ratesSheet.Cells[11, 2].Value = GetNumericValueSafely("numRentalCarCost");
+
+            ratesSheet.Cells[12, 1].Value = "Flight Cost:";
+            ratesSheet.Cells[12, 2].Value = GetNumericValueSafely("numFlightCost");
+
+            ratesSheet.Cells[13, 1].Value = "Mileage Rate:";
+            ratesSheet.Cells[13, 2].Value = GetNumericValueSafely("numMileageRate");
+
+            ratesSheet.Cells[14, 1].Value = "Per Diem:";
+            ratesSheet.Cells[14, 2].Value = GetNumericValueSafely("numPerDiem");
+
+            // Add travel configuration
+            ratesSheet.Cells[16, 1].Value = "TRAVEL CONFIGURATION";
+            ratesSheet.Cells[16, 1].Style.Font.Bold = true;
+            ratesSheet.Cells[16, 1].Style.Font.Size = 12;
+
+            ratesSheet.Cells[17, 1].Value = "Travel Method:";
+            ComboBox travelMethodCombo = GetControlSafely<ComboBox>("comboBoxTravelMethod");
+            ratesSheet.Cells[17, 2].Value = travelMethodCombo?.SelectedItem?.ToString() ?? "Driving";
+
+            ratesSheet.Cells[18, 1].Value = "Daily Distance (One Way):";
+            ratesSheet.Cells[18, 2].Value = GetNumericValueSafely("numDailyTravelDistance");
+
+            ratesSheet.Cells[19, 1].Value = "Daily Travel Time (One Way):";
+            ratesSheet.Cells[19, 2].Value = GetNumericValueSafely("numDailyTravelTime");
+
+            ratesSheet.Cells[20, 1].Value = "Travel Distance to Site:";
+            ratesSheet.Cells[20, 2].Value = GetNumericValueSafely("numTravelDistance");
+
+            ratesSheet.Cells[21, 1].Value = "Travel Time to Site:";
+            ratesSheet.Cells[21, 2].Value = GetNumericValueSafely("numTravelTime");
+
+            ratesSheet.Cells[22, 1].Value = "Separate Travel Day To:";
+            ratesSheet.Cells[22, 2].Value = GetControlSafely<CheckBox>("chkSeparateTravelTo")?.Checked ?? false ? "Yes" : "No";
+
+            ratesSheet.Cells[23, 1].Value = "Separate Travel Day From:";
+            ratesSheet.Cells[23, 2].Value = GetControlSafely<CheckBox>("chkSeparateTravelFrom")?.Checked ?? false ? "Yes" : "No";
+
+            // Add general configuration
+            ratesSheet.Cells[25, 1].Value = "GENERAL CONFIGURATION";
+            ratesSheet.Cells[25, 1].Style.Font.Bold = true;
+            ratesSheet.Cells[25, 1].Style.Font.Size = 12;
+
+            ratesSheet.Cells[26, 1].Value = "Days on Site:";
+            ratesSheet.Cells[26, 2].Value = GetNumericValueSafely("numDaysOnSite");
+
+            ratesSheet.Cells[27, 1].Value = "Hours per Day:";
+            ratesSheet.Cells[27, 2].Value = GetNumericValueSafely("numHoursPerDay");
+
+            ratesSheet.Cells[28, 1].Value = "Start Day:";
+            ComboBox startDayCombo = GetControlSafely<ComboBox>("comboBoxStartDay");
+            ratesSheet.Cells[28, 2].Value = startDayCombo?.SelectedItem?.ToString() ?? "Monday";
+
+            ratesSheet.Cells[29, 1].Value = "Holdover Day:";
+            CheckBox holdoverCheck = GetControlSafely<CheckBox>("chkHoldoverDay");
+            ratesSheet.Cells[29, 2].Value = holdoverCheck?.Checked ?? false ? "Yes" : "No";
+
+            if (holdoverCheck?.Checked ?? false)
+            {
+                ComboBox holdoverDayCombo = GetControlSafely<ComboBox>("comboBoxHoldoverDay");
+                ratesSheet.Cells[30, 1].Value = "Holdover Day of Week:";
+                ratesSheet.Cells[30, 2].Value = holdoverDayCombo?.SelectedItem?.ToString() ?? "Sunday";
+            }
+
+            // Add export info
+            ratesSheet.Cells[32, 1].Value = "REPORT INFORMATION";
+            ratesSheet.Cells[32, 1].Style.Font.Bold = true;
+            ratesSheet.Cells[32, 1].Style.Font.Size = 12;
+
+            ratesSheet.Cells[33, 1].Value = "Generated On:";
+            ratesSheet.Cells[33, 2].Value = DateTime.Now.ToString("MMM d, yyyy h:mm tt");
+
+            // Format rate cells
+            ratesSheet.Cells[2, 2, 7, 2].Style.Numberformat.Format = "$#,##0.00";
+            ratesSheet.Cells[10, 2, 12, 2].Style.Numberformat.Format = "$#,##0.00";
+            ratesSheet.Cells[13, 2].Style.Numberformat.Format = "$#,##0.00";
+            ratesSheet.Cells[14, 2].Style.Numberformat.Format = "$#,##0.00";
+
+            // Format distance and time cells
+            ratesSheet.Cells[18, 2].Style.Numberformat.Format = "#,##0.0";
+            ratesSheet.Cells[19, 2].Style.Numberformat.Format = "#,##0.00";
+            ratesSheet.Cells[20, 2].Style.Numberformat.Format = "#,##0.0";
+            ratesSheet.Cells[21, 2].Style.Numberformat.Format = "#,##0.00";
+
+            // Auto-fit all columns
+            ratesSheet.Cells[ratesSheet.Dimension.Address].AutoFitColumns();
+        }
+
+        // Helper method to calculate hours by rate type
+        private void CalculateHoursByRate(out decimal regularLabor, out decimal overtimeLabor,
+                                         out decimal premiumLabor, out decimal regularTravel,
+                                         out decimal overtimeTravel, out decimal premiumTravel)
+        {
+            regularLabor = 0;
+            overtimeLabor = 0;
+            premiumLabor = 0;
+            regularTravel = 0;
+            overtimeTravel = 0;
+            premiumTravel = 0;
+
+            // Get required controls and data
+            int totalDays = int.Parse(GetControlSafely<Label>("lblTotalDaysValue")?.Text ?? "0");
+            int startDayIndex = GetControlSafely<ComboBox>("comboBoxStartDay")?.SelectedIndex ?? 0;
+            bool emergencyRate = GetControlSafely<CheckBox>("chkEmergency")?.Checked ?? false;
+
+            // Process each day panel to determine hours by rate
+            for (int i = 0; i < totalDays; i++)
+            {
+                try
+                {
+                    Panel dayPanel = (Panel)Controls.Find($"dayPanel{i + 1}", true)[0];
+                    Label laborHoursLabel = (Label)dayPanel.Controls.Find($"laborHoursLabel{i + 1}", false)[0];
+                    Label travelHoursLabel = (Label)dayPanel.Controls.Find($"travelHoursLabel{i + 1}", false)[0];
+
+                    // Get labor and travel hours 
+                    decimal laborHours = 0;
+                    decimal travelHours = 0;
+                    decimal.TryParse(laborHoursLabel.Tag?.ToString() ?? "0", out laborHours);
+                    decimal.TryParse(travelHoursLabel.Tag?.ToString() ?? "0", out travelHours);
+
+                    // Skip if no hours
+                    if (laborHours <= 0 && travelHours <= 0)
+                        continue;
+
+                    // Determine day of week
+                    int dayIndex = (startDayIndex + i) % 7;
+                    bool isSaturday = (dayIndex == 5);
+                    bool isSunday = (dayIndex == 6);
+
+                    // Apply holdover rule for holdover days
+                    if (dayPanel.BackColor == Color.LightGreen || dayPanel.BackColor == darkModeHoldoverDay)
+                    {
+                        // Holdover days are regular rate regardless of day of week
+                        regularLabor += laborHours;
+                        regularTravel += travelHours;
+                    }
+                    // Apply emergency rule
+                    else if (emergencyRate)
+                    {
+                        // Emergency rates apply premium rate to all hours
+                        premiumLabor += laborHours;
+                        premiumTravel += travelHours;
+                    }
+                    else
+                    {
+                        // Normal rate calculation based on day of week
+                        if (!isSaturday && !isSunday) // Monday-Friday
+                        {
+                            // Regular hours (max 8), then overtime
+                            regularLabor += Math.Min(8, laborHours);
+                            overtimeLabor += Math.Max(0, laborHours - 8);
+
+                            regularTravel += Math.Min(8, travelHours);
+                            overtimeTravel += Math.Max(0, travelHours - 8);
+                        }
+                        else if (isSaturday) // Saturday
+                        {
+                            // All hours at overtime rate
+                            overtimeLabor += laborHours;
+                            overtimeTravel += travelHours;
+                        }
+                        else if (isSunday) // Sunday
+                        {
+                            // All hours at premium rate
+                            premiumLabor += laborHours;
+                            premiumTravel += travelHours;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error calculating hours for day {i + 1}: {ex.Message}");
+                }
+            }
+        }
+
+        // Helper to get Excel column letter from column index
+        private string GetExcelColumnLetter(int columnNumber)
+        {
+            string columnName = "";
+
+            while (columnNumber > 0)
+            {
+                int remainder = (columnNumber - 1) % 26;
+                char columnLetter = (char)(65 + remainder);
+                columnName = columnLetter + columnName;
+                columnNumber = (columnNumber - 1) / 26;
+            }
+
+            return columnName;
+        }
+
+
+
+
 
 
         private void ResetForm()
