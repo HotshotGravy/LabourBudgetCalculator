@@ -15,6 +15,7 @@ using System.Xml;
 
 using OfficeOpenXml;
 using OfficeOpenXml.Style;
+// using System.Reflection.Emit;
 
 namespace LabourBudgetCalculator
 {
@@ -344,7 +345,7 @@ namespace LabourBudgetCalculator
                 Size = new Size(75, 25),
                 Maximum = 10000
             };
-            Label lblTravelDistanceUnit = new Label { Text = "Miles", Location = new Point(335, 90), AutoSize = true };
+            Label lblTravelDistanceUnit = new Label { Text = "miles / km", Location = new Point(335, 90), AutoSize = true };
 
             // Total Travel Time
             Label lblTravelTime = new Label { Text = "Total Travel Time to Site Area (Including Flight):", Location = new Point(20, 120), AutoSize = true };
@@ -357,7 +358,7 @@ namespace LabourBudgetCalculator
                 Increment = 0.5m,
                 DecimalPlaces = 1
             };
-            Label lblTravelTimeUnit = new Label { Text = "Hours", Location = new Point(335, 120), AutoSize = true };
+            Label lblTravelTimeUnit = new Label { Text = "hours", Location = new Point(335, 120), AutoSize = true };
 
             // Daily Travel Distance
             Label lblDailyTravelDistance = new Label { Text = "Daily Driving Distance (One Way):", Location = new Point(20, 150), AutoSize = true };
@@ -370,7 +371,7 @@ namespace LabourBudgetCalculator
                 Maximum = 1000,
                 Increment = 15m
             };
-            Label lblDailyTravelDistanceUnit = new Label { Text = "Miles", Location = new Point(335, 150), AutoSize = true };
+            Label lblDailyTravelDistanceUnit = new Label { Text = "miles / km", Location = new Point(335, 150), AutoSize = true };
 
             // Daily Travel Time
             Label lblDailyTravelTime = new Label { Text = "Daily Travel Time (One way):", Location = new Point(20, 180), AutoSize = true };
@@ -380,10 +381,10 @@ namespace LabourBudgetCalculator
                 Location = new Point(255, 177),
                 Size = new Size(75, 25),
                 Maximum = 24,
-                Increment = 0.25m,   
+                Increment = 0.25m,
                 DecimalPlaces = 2
             };
-            Label lblDailyTravelTimeUnit = new Label { Text = "Hours", Location = new Point(335, 180), AutoSize = true };
+            Label lblDailyTravelTimeUnit = new Label { Text = "hours", Location = new Point(335, 180), AutoSize = true };
 
             // Add controls to groupBoxTravel
             groupBoxTravel.Controls.AddRange(new Control[] {
@@ -417,11 +418,11 @@ namespace LabourBudgetCalculator
                 Size = new Size(80, 25),
                 Maximum = 10000
             };
-            Label lblFlightCostUnit = new Label { Text = "USD", Location = new Point(255, 30), AutoSize = true };
+            Label lblFlightCostUnit = new Label { Text = "", Location = new Point(255, 30), AutoSize = true };
 
             // Rental Car
             CheckBox chkRentalCar = new CheckBox { Name = "chkRentalCar", Text = "Rental Car", Location = new Point(20, 60), AutoSize = true };
-            Label lblDailyCost = new Label { Text = "Daily Cost:", Location = new Point(110, 60), AutoSize = true };
+            Label lblDailyCost = new Label { Text = "per day", Location = new Point(255, 60), AutoSize = true };
             NumericUpDown numRentalCarCost = new NumericUpDown
             {
                 Name = "numRentalCarCost",
@@ -429,10 +430,23 @@ namespace LabourBudgetCalculator
                 Size = new Size(80, 25),
                 Maximum = 500
             };
-            Label lblRentalCarCostUnit = new Label { Text = "USD", Location = new Point(255, 60), AutoSize = true };
+            Label lblRentalCarCostUnit = new Label { Text = "", Location = new Point(255, 60), AutoSize = true };
 
-            // Hotel Cost
-            Label lblHotelCost = new Label { Text = "Hotel Cost:", Location = new Point(20, 90), AutoSize = true };
+            CheckBox chkHotel = new CheckBox
+            {
+                Name = "chkHotel",
+                Text = "Hotel",
+                Location = new Point(20, 90),
+                AutoSize = true
+            };
+
+            Label lblHotelCost = new Label
+            {
+                Text = "",
+                Location = new Point(110, 90),
+                AutoSize = true
+            };
+
             NumericUpDown numHotelCost = new NumericUpDown
             {
                 Name = "numHotelCost",
@@ -440,7 +454,13 @@ namespace LabourBudgetCalculator
                 Size = new Size(80, 25),
                 Maximum = 1000
             };
-            Label lblHotelCostUnit = new Label { Text = "per Night", Location = new Point(255, 90), AutoSize = true };
+
+            Label lblHotelCostUnit = new Label
+            {
+                Text = "per night",
+                Location = new Point(255, 90),
+                AutoSize = true
+            };
 
             // Mileage Rate
             Label lblMileageRate = new Label { Text = "Mileage:", Location = new Point(20, 120), AutoSize = true };
@@ -453,7 +473,7 @@ namespace LabourBudgetCalculator
                 DecimalPlaces = 2,
                 Increment = 0.01m
             };
-            Label lblMileageRateUnit = new Label { Text = "per Mile", Location = new Point(255, 120), AutoSize = true };
+            Label lblMileageRateUnit = new Label { Text = "per mile / km", Location = new Point(255, 120), AutoSize = true };
 
             // Per Diem
             Label lblPerDiem = new Label { Text = "Per Diem:", Location = new Point(20, 150), AutoSize = true };
@@ -464,13 +484,13 @@ namespace LabourBudgetCalculator
                 Size = new Size(80, 25),
                 Maximum = 500
             };
-            Label lblPerDiemUnit = new Label { Text = "per Day", Location = new Point(255, 150), AutoSize = true };
+            Label lblPerDiemUnit = new Label { Text = "per day", Location = new Point(255, 150), AutoSize = true };
 
-            // Setup Rate Sheets button
+            // Edit Rate Sheets button
             Button btnSetup = new Button
             {
                 Name = "btnSetup",
-                Text = "Setup Rate Sheets",
+                Text = "Edit Rate Sheets",
                 Location = new Point(20, 190),
                 Size = new Size(150, 25)
             };
@@ -527,13 +547,13 @@ namespace LabourBudgetCalculator
 
             // Add controls to groupBoxExpenses including btnReset
             groupBoxExpenses.Controls.AddRange(new Control[] {
-        lblFlightCost, numFlightCost, lblFlightCostUnit,
-        chkRentalCar, lblDailyCost, numRentalCarCost, lblRentalCarCostUnit,
-        lblHotelCost, numHotelCost, lblHotelCostUnit,
-        lblMileageRate, numMileageRate, lblMileageRateUnit,
-        lblPerDiem, numPerDiem, lblPerDiemUnit,
-        btnSetup, btnReset, btnDarkMode,btnExport
-    });
+    lblFlightCost, numFlightCost, lblFlightCostUnit,
+    chkRentalCar, lblDailyCost, numRentalCarCost, lblRentalCarCostUnit,
+    chkHotel, lblHotelCost, numHotelCost, lblHotelCostUnit,  // Added chkHotel here
+    lblMileageRate, numMileageRate, lblMileageRateUnit,
+    lblPerDiem, numPerDiem, lblPerDiemUnit,
+    btnSetup, btnReset, btnDarkMode, btnExport
+});
         }
 
         private void CreateProjectInfoSection()
@@ -548,34 +568,66 @@ namespace LabourBudgetCalculator
             };
             this.Controls.Add(groupBoxProjectInfo);
 
-            // Technician Name
+            // Project Number
+            Label lblProjectNumber = new Label
+            {
+                Text = "Project Number:",
+                Location = new Point(20, 30),
+                AutoSize = true
+            };
+
+            TextBox txtProjectNumber = new TextBox
+            {
+                Name = "txtProjectNumber",
+                Text = "", // Default empty
+                Location = new Point(120, 27),
+                Size = new Size(100, 25),
+            };
+
+            // Customer
+            Label lblCustomer = new Label
+            {
+                Text = "Customer:",
+                Location = new Point(230, 30),
+                AutoSize = true
+            };
+
+            TextBox txtCustomer = new TextBox
+            {
+                Name = "txtCustomer",
+                Text = "", // Default empty
+                Location = new Point(290, 27),
+                Size = new Size(140, 25),
+            };
+
+            // Technician Name - moved down
             Label lblTechnician = new Label
             {
                 Text = "Technician:",
-                Location = new Point(20, 30),
+                Location = new Point(20, 60), // Moved down
                 AutoSize = true
             };
 
             TextBox txtTechnician = new TextBox
             {
                 Name = "txtTechnician",
-                Text = "Technician", // Default value
-                Location = new Point(120, 27),
+                Text = "Unspecified", // Default value
+                Location = new Point(120, 57), // Moved down
                 Size = new Size(200, 25),
             };
 
-            // Start Date
+            // Start Date - moved down
             Label lblStartDate = new Label
             {
                 Text = "Start Date:",
-                Location = new Point(20, 70),
+                Location = new Point(20, 90), // Moved down
                 AutoSize = true
             };
 
             DateTimePicker dtpStartDate = new DateTimePicker
             {
                 Name = "dtpStartDate",
-                Location = new Point(120, 67),
+                Location = new Point(120, 87), // Moved down
                 Size = new Size(200, 25),
                 Format = DateTimePickerFormat.Custom,
                 CustomFormat = "MMMM d, yyyy",
@@ -587,22 +639,22 @@ namespace LabourBudgetCalculator
             {
                 Name = "btnClearStartDate",
                 Text = "Clear",
-                Location = new Point(330, 67),
+                Location = new Point(330, 87), // Moved down
                 Size = new Size(60, 25),
             };
 
-            // End Date
+            // End Date - moved down
             Label lblEndDate = new Label
             {
                 Text = "End Date:",
-                Location = new Point(20, 110),
+                Location = new Point(20, 120), // Moved down
                 AutoSize = true
             };
 
             DateTimePicker dtpEndDate = new DateTimePicker
             {
                 Name = "dtpEndDate",
-                Location = new Point(120, 107),
+                Location = new Point(120, 117), // Moved down
                 Size = new Size(200, 25),
                 Format = DateTimePickerFormat.Custom,
                 CustomFormat = "MMMM d, yyyy",
@@ -614,12 +666,14 @@ namespace LabourBudgetCalculator
             {
                 Name = "btnClearEndDate",
                 Text = "Clear",
-                Location = new Point(330, 107),
+                Location = new Point(330, 117), // Moved down
                 Size = new Size(60, 25),
             };
 
             // Add controls to groupBoxProjectInfo
             groupBoxProjectInfo.Controls.AddRange(new Control[] {
+        lblProjectNumber, txtProjectNumber,
+        lblCustomer, txtCustomer,
         lblTechnician, txtTechnician,
         lblStartDate, dtpStartDate, btnClearStartDate,
         lblEndDate, dtpEndDate, btnClearEndDate
@@ -1189,7 +1243,7 @@ namespace LabourBudgetCalculator
                 Text = "0",
                 Location = new Point(155, 288),
                 Size = new Size(40, 25),
-                Font = new Font(this.Font.FontFamily, 18, FontStyle.Bold) 
+                Font = new Font(this.Font.FontFamily, 18, FontStyle.Bold)
             };
             groupBoxResults.Controls.Add(lblTotalDaysValue);
 
@@ -1198,7 +1252,7 @@ namespace LabourBudgetCalculator
                 Text = "Total Days:",
                 Location = new Point(40, 290),
                 AutoSize = true,
-                Font = new Font(this.Font.FontFamily, 14, FontStyle.Bold) 
+                Font = new Font(this.Font.FontFamily, 14, FontStyle.Bold)
             };
             groupBoxResults.Controls.Add(lblTotalDays);
 
@@ -1208,7 +1262,7 @@ namespace LabourBudgetCalculator
                 Name = "grandTotalPanel",
                 Size = new Size(260, 100),
                 BorderStyle = BorderStyle.FixedSingle,
-               // BackColor = Color.WhiteSmoke,
+                // BackColor = Color.WhiteSmoke,
                 Location = new Point(530, 210)
             };
             groupBoxResults.Controls.Add(grandTotalPanel);
@@ -1222,7 +1276,7 @@ namespace LabourBudgetCalculator
                 Font = new Font(this.Font.FontFamily, 14, FontStyle.Bold),
                 ForeColor = Color.DarkBlue,
                 BackColor = Color.Transparent
-        };
+            };
             grandTotalPanel.Controls.Add(lblGrandTotalSection);
 
             // Grand total value
@@ -1236,7 +1290,7 @@ namespace LabourBudgetCalculator
                 BackColor = Color.Transparent
             };
             grandTotalPanel.Controls.Add(lblGrandTotal);
-            
+
         }
 
 
@@ -1352,7 +1406,7 @@ namespace LabourBudgetCalculator
 
                 // Weekend formatting
                 // Weekend formatting
-                Color weekendColor = isDarkMode ? Color.Yellow: Color.Gray;
+                Color weekendColor = isDarkMode ? Color.Yellow : Color.Gray;
                 Font weekdayFont = new Font(this.Font, FontStyle.Regular);
                 Font weekendFont = new Font(this.Font, FontStyle.Bold);
 
@@ -1475,7 +1529,7 @@ namespace LabourBudgetCalculator
                             dayPanel.BackColor = isDarkMode ? darkModeWorkDay : Color.LightBlue;
 
                             // Default to daily travel time
-                            travelHours = dailyTravelTime *2;
+                            travelHours = dailyTravelTime * 2;
 
                             decimal displayTravelTime = travelHours;
 
@@ -1517,11 +1571,11 @@ namespace LabourBudgetCalculator
                         System.Diagnostics.Debug.WriteLine($"Error updating day panel {i + 1}: {ex.Message}");
                     }
                 }
-    DateTimePicker dtpStartDate = GetControlSafely<DateTimePicker>("dtpStartDate");
-    if (dtpStartDate != null && dtpStartDate.Checked)
-    {
-        UpdateScheduleDates();
-    }
+                DateTimePicker dtpStartDate = GetControlSafely<DateTimePicker>("dtpStartDate");
+                if (dtpStartDate != null && dtpStartDate.Checked)
+                {
+                    UpdateScheduleDates();
+                }
 
             }
         }
@@ -1531,9 +1585,9 @@ namespace LabourBudgetCalculator
         {
             // 1. Style all section headers
             StyleSectionHeaders();
-                              }
+        }
 
-                private void StyleSectionHeaders()
+        private void StyleSectionHeaders()
         {
             // Apply consistent styling to all section headers - updated for table layout
             try
@@ -1576,7 +1630,7 @@ namespace LabourBudgetCalculator
         }
 
         // Method to enhance Grand Total section
-        
+
         private void SetupEventHandlers()
         {
             try
@@ -1683,7 +1737,7 @@ namespace LabourBudgetCalculator
                     };
                 }
 
-          
+
 
                 // Additional event handlers for schedule updates
                 SetupAdditionalEventHandlers();
@@ -1880,6 +1934,9 @@ namespace LabourBudgetCalculator
             NumericUpDown numHotelCost = (NumericUpDown)Controls.Find("numHotelCost", true)[0];
             NumericUpDown numMileageRate = (NumericUpDown)Controls.Find("numMileageRate", true)[0];
             NumericUpDown numPerDiem = (NumericUpDown)Controls.Find("numPerDiem", true)[0];
+            CheckBox chkHotel = GetControlSafely<CheckBox>("chkHotel");
+            if (chkHotel != null)
+                chkHotel.CheckedChanged += (s, e) => CalculateAndDisplayResults();
 
             numFlightCost.ValueChanged += (s, e) => CalculateAndDisplayResults();
             chkRentalCar.CheckedChanged += (s, e) => CalculateAndDisplayResults();
@@ -1888,7 +1945,7 @@ namespace LabourBudgetCalculator
             numMileageRate.ValueChanged += (s, e) => CalculateAndDisplayResults();
             numPerDiem.ValueChanged += (s, e) => CalculateAndDisplayResults();
         }
-       
+
         private void DisplayRateSheet()
         {
             if (currentRateSheet == null)
@@ -1968,6 +2025,7 @@ namespace LabourBudgetCalculator
                 return defaultValue;
             }
         }
+
         private void CalculateAndDisplayResults()
         {
             try
@@ -2060,6 +2118,12 @@ namespace LabourBudgetCalculator
                 if (chkRentalCar != null)
                     rentalCarChecked = chkRentalCar.Checked;
 
+                // Get hotel option
+                bool hotelChecked = false;
+                CheckBox chkHotel = GetControlSafely<CheckBox>("chkHotel");
+                if (chkHotel != null)
+                    hotelChecked = chkHotel.Checked;
+
                 decimal rentalCarCost = GetNumericValueSafely("numRentalCarCost", 0);
                 decimal flightCost = GetNumericValueSafely("numFlightCost", 0);
                 decimal mileageRate = GetNumericValueSafely("numMileageRate", 0);
@@ -2114,10 +2178,12 @@ namespace LabourBudgetCalculator
                         }
 
                         // Apply holdover rule for holdover days
-                        if (dayPanel.BackColor == Color.LightGreen) // Holdover day
+                        if (dayPanel.BackColor == Color.LightGreen ||
+                            (isDarkMode && dayPanel.BackColor == darkModeHoldoverDay))
                         {
                             // Holdover days are 8 hours at regular rate no matter what day of week
                             regularLaborHours = laborHours;
+                            regularTravelHours = travelHours;
                         }
                         // Apply emergency rule
                         else if (emergencyRate)
@@ -2131,13 +2197,28 @@ namespace LabourBudgetCalculator
                             // Normal rate calculation based on day of week
                             if (isWeekday) // Monday-Friday
                             {
-                                // Regular hours (max 8), then overtime
-                                regularLaborHours = Math.Min(8, laborHours);
-                                overtimeLaborHours = Math.Max(0, laborHours - 8);
+                                // Calculate total hours first
+                                decimal totalHours = laborHours + travelHours;
 
-                                // For travel hours - apply same logic
-                                regularTravelHours = Math.Min(8, travelHours);
-                                overtimeTravelHours = Math.Max(0, travelHours - 8);
+                                if (totalHours <= 8)
+                                {
+                                    // All hours are regular rate
+                                    regularLaborHours = laborHours;
+                                    regularTravelHours = travelHours;
+                                }
+                                else
+                                {
+                                    // Labor hours get priority for regular rate
+                                    regularLaborHours = Math.Min(8, laborHours);
+                                    decimal remainingRegularHours = Math.Max(0, 8 - regularLaborHours);
+                                    regularTravelHours = Math.Min(remainingRegularHours, travelHours);
+
+                                    // Any excess labor hours go to overtime
+                                    overtimeLaborHours = Math.Max(0, laborHours - regularLaborHours);
+
+                                    // Any excess travel hours go to overtime
+                                    overtimeTravelHours = Math.Max(0, travelHours - regularTravelHours);
+                                }
                             }
                             else if (isSaturday) // Saturday
                             {
@@ -2180,8 +2261,8 @@ namespace LabourBudgetCalculator
                         decimal dayFlight = 0;
                         decimal dayPerDiem = 0;
 
-                        // Hotel cost - applied to all days except the last
-                        if (i < totalDays - 1) // No hotel on last day
+                        // Hotel cost - applied to all days except the last, and only if hotel is checked
+                        if (hotelChecked && i < totalDays - 1) // No hotel on last day
                         {
                             dayHotel = hotelCost;
                         }
@@ -2203,11 +2284,10 @@ namespace LabourBudgetCalculator
                             }
                         }
 
-                        // Mileage calculation - the key fix
+                        // Mileage calculation
                         if (isFirstDay || isLastDay)
                         {
                             // First day or last day mileage - always apply if travel distance is specified
-                            // (regardless of travel method or rental car)
                             if (travelDistanceToSite > 0)
                             {
                                 dayMileage = mileageRate * travelDistanceToSite;
@@ -2215,10 +2295,8 @@ namespace LabourBudgetCalculator
                         }
                         else if (travelMethod == "Driving" && !rentalCarChecked)
                         {
-                            // For middle days, only apply mileage if:
-                            // 1. Travel method is Driving AND
-                            // 2. Not using a rental car
-                            dayMileage = mileageRate * (dailyTravelDistance *2);
+                            // For middle days, only apply mileage if driving and no rental car
+                            dayMileage = mileageRate * (dailyTravelDistance * 2);
                         }
 
                         // TRAVEL TIME SUPERSEDING LOGIC
@@ -2331,6 +2409,7 @@ namespace LabourBudgetCalculator
                 MessageBox.Show($"Calculation error: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+
 
         private void ToggleDarkMode()
         {
@@ -3087,21 +3166,46 @@ namespace LabourBudgetCalculator
         }
         private void ExportToExcel()
         {
+            // Get project number and customer
+            string projectNumber = GetControlSafely<TextBox>("txtProjectNumber")?.Text ?? "";
+            string customer = GetControlSafely<TextBox>("txtCustomer")?.Text ?? "";
+
+            // Create the filename
+            string filename = "";
+            if (!string.IsNullOrWhiteSpace(projectNumber) && !string.IsNullOrWhiteSpace(customer))
+            {
+                // Both project number and customer provided
+                filename = $"{projectNumber} {customer} - Time and Expenses Estimate {DateTime.Now:yyyy-MM-dd}";
+            }
+            else if (!string.IsNullOrWhiteSpace(projectNumber))
+            {
+                // Only project number provided
+                filename = $"{projectNumber} - Time and Expenses Estimate {DateTime.Now:yyyy-MM-dd}";
+            }
+            else if (!string.IsNullOrWhiteSpace(customer))
+            {
+                // Only customer provided
+                filename = $"{customer} - Time and Expenses Estimate {DateTime.Now:yyyy-MM-dd}";
+            }
+            else
+            {
+                // Neither provided
+                filename = $"Time and Expenses Estimate {DateTime.Now:yyyy-MM-dd}";
+            }
+
             // Create save file dialog
             SaveFileDialog saveDialog = new SaveFileDialog();
             saveDialog.Filter = "Excel Files (*.xlsx)|*.xlsx";
             saveDialog.Title = "Export Time & Expense Report";
             saveDialog.DefaultExt = "xlsx";
-            saveDialog.FileName = $"Time_Expense_Report_{DateTime.Now:yyyy-MM-dd}";
+            saveDialog.FileName = filename;
 
             // Show dialog and handle result
             if (saveDialog.ShowDialog() == DialogResult.OK)
             {
                 try
                 {
-                    // Set license context
-                   // ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-
+                    // EPPlus 4.5.3.x doesn't require setting license context
                     using (var package = new ExcelPackage())
                     {
                         CreateSummarySheet(package);
@@ -3123,7 +3227,6 @@ namespace LabourBudgetCalculator
                 }
             }
         }
-
         private void CreateSummarySheet(ExcelPackage package)
         {
             var summarySheet = package.Workbook.Worksheets.Add("Summary");
@@ -3133,10 +3236,20 @@ namespace LabourBudgetCalculator
             summarySheet.Cells[1, 1].Style.Font.Size = 16;
             summarySheet.Cells[1, 1].Style.Font.Bold = true;
 
+            // Get project and customer info
+            string projectNumber = GetControlSafely<TextBox>("txtProjectNumber")?.Text ?? "Not specified";
+            string customer = GetControlSafely<TextBox>("txtCustomer")?.Text ?? "Not specified";
+
+            summarySheet.Cells[3, 1].Value = "Project Number:";
+            summarySheet.Cells[3, 2].Value = projectNumber;
+
+            summarySheet.Cells[4, 1].Value = "Customer:";
+            summarySheet.Cells[4, 2].Value = customer;
+
             // Get technician name
             string technicianName = GetControlSafely<TextBox>("txtTechnician")?.Text ?? "Not specified";
-            summarySheet.Cells[3, 1].Value = "Technician:";
-            summarySheet.Cells[3, 2].Value = technicianName;
+            summarySheet.Cells[5, 1].Value = "Technician:";
+            summarySheet.Cells[5, 2].Value = technicianName;
 
             // Get date range
             DateTimePicker dtpStartDate = GetControlSafely<DateTimePicker>("dtpStartDate");
@@ -3153,36 +3266,31 @@ namespace LabourBudgetCalculator
                     dateRange = $"Until {dtpEndDate.Value:MMM d, yyyy}";
             }
 
-            summarySheet.Cells[4, 1].Value = "Date Range:";
-            summarySheet.Cells[4, 2].Value = dateRange;
+            summarySheet.Cells[6, 1].Value = "Date Range:";
+            summarySheet.Cells[6, 2].Value = dateRange;
 
-            // Add rate sheet info
-            ComboBox rateSheetCombo = GetControlSafely<ComboBox>("comboBoxRateSheet");
-            summarySheet.Cells[5, 1].Value = "Rate Sheet:";
-            summarySheet.Cells[5, 2].Value = rateSheetCombo?.SelectedItem?.ToString() ?? "Default";
+            // Get discount and emergency status 
+            decimal discount = GetNumericValueSafely("numDiscount", 0);
+            bool emergencyRate = GetControlSafely<CheckBox>("chkEmergency")?.Checked ?? false;
 
-            // Get discount and emergency status
-            decimal discount = GetNumericValueSafely("numDiscount");
-            bool emergency = GetControlSafely<CheckBox>("chkEmergency")?.Checked ?? false;
+            summarySheet.Cells[7, 1].Value = "Discount Applied:";
+            summarySheet.Cells[7, 2].Value = $"{discount}%";
 
-            summarySheet.Cells[6, 1].Value = "Discount Applied:";
-            summarySheet.Cells[6, 2].Value = $"{discount}%";
-
-            summarySheet.Cells[7, 1].Value = "Emergency Rates:";
-            summarySheet.Cells[7, 2].Value = emergency ? "Yes" : "No";
+            summarySheet.Cells[8, 1].Value = "Emergency Rates:";
+            summarySheet.Cells[8, 2].Value = emergencyRate ? "Yes" : "No";
 
             // Add labor breakdown
-            summarySheet.Cells[9, 1].Value = "HOURS BREAKDOWN";
-            summarySheet.Cells[9, 1].Style.Font.Bold = true;
+            summarySheet.Cells[10, 1].Value = "HOURS BREAKDOWN";
+            summarySheet.Cells[10, 1].Style.Font.Bold = true;
 
-            summarySheet.Cells[10, 1].Value = "Category";
-            summarySheet.Cells[10, 2].Value = "Regular Rate";
-            summarySheet.Cells[10, 3].Value = "Overtime Rate";
-            summarySheet.Cells[10, 4].Value = "Premium Rate";
-            summarySheet.Cells[10, 5].Value = "Total";
+            summarySheet.Cells[11, 1].Value = "Category";
+            summarySheet.Cells[11, 2].Value = "Regular Rate";
+            summarySheet.Cells[11, 3].Value = "Overtime Rate";
+            summarySheet.Cells[11, 4].Value = "Premium Rate";
+            summarySheet.Cells[11, 5].Value = "Total";
 
             // Format headers
-            var headerRange = summarySheet.Cells[10, 1, 10, 5];
+            var headerRange = summarySheet.Cells[11, 1, 11, 5];
             headerRange.Style.Font.Bold = true;
             headerRange.Style.Fill.PatternType = ExcelFillStyle.Solid;
             headerRange.Style.Fill.BackgroundColor.SetColor(Color.LightGray);
@@ -3193,29 +3301,29 @@ namespace LabourBudgetCalculator
                 out decimal overtimeTravelHours, out decimal premiumTravelHours);
 
             // Add labor hours
-            summarySheet.Cells[11, 1].Value = "Labor Hours";
-            summarySheet.Cells[11, 2].Value = regularLaborHours;
-            summarySheet.Cells[11, 3].Value = overtimeLaborHours;
-            summarySheet.Cells[11, 4].Value = premiumLaborHours;
-            summarySheet.Cells[11, 5].Value = regularLaborHours + overtimeLaborHours + premiumLaborHours;
+            summarySheet.Cells[12, 1].Value = "Labor Hours";
+            summarySheet.Cells[12, 2].Value = regularLaborHours;
+            summarySheet.Cells[12, 3].Value = overtimeLaborHours;
+            summarySheet.Cells[12, 4].Value = premiumLaborHours;
+            summarySheet.Cells[12, 5].Value = regularLaborHours + overtimeLaborHours + premiumLaborHours;
 
             // Add travel hours
-            summarySheet.Cells[12, 1].Value = "Travel Hours";
-            summarySheet.Cells[12, 2].Value = regularTravelHours;
-            summarySheet.Cells[12, 3].Value = overtimeTravelHours;
-            summarySheet.Cells[12, 4].Value = premiumTravelHours;
-            summarySheet.Cells[12, 5].Value = regularTravelHours + overtimeTravelHours + premiumTravelHours;
+            summarySheet.Cells[13, 1].Value = "Travel Hours";
+            summarySheet.Cells[13, 2].Value = regularTravelHours;
+            summarySheet.Cells[13, 3].Value = overtimeTravelHours;
+            summarySheet.Cells[13, 4].Value = premiumTravelHours;
+            summarySheet.Cells[13, 5].Value = regularTravelHours + overtimeTravelHours + premiumTravelHours;
 
             // Add totals row
-            summarySheet.Cells[13, 1].Value = "Total Hours";
-            summarySheet.Cells[13, 2].Value = regularLaborHours + regularTravelHours;
-            summarySheet.Cells[13, 3].Value = overtimeLaborHours + overtimeTravelHours;
-            summarySheet.Cells[13, 4].Value = premiumLaborHours + premiumTravelHours;
-            summarySheet.Cells[13, 5].Value = regularLaborHours + overtimeLaborHours + premiumLaborHours +
+            summarySheet.Cells[14, 1].Value = "Total Hours";
+            summarySheet.Cells[14, 2].Value = regularLaborHours + regularTravelHours;
+            summarySheet.Cells[14, 3].Value = overtimeLaborHours + overtimeTravelHours;
+            summarySheet.Cells[14, 4].Value = premiumLaborHours + premiumTravelHours;
+            summarySheet.Cells[14, 5].Value = regularLaborHours + overtimeLaborHours + premiumLaborHours +
                                             regularTravelHours + overtimeTravelHours + premiumTravelHours;
 
             // Format totals row
-            var totalsRange = summarySheet.Cells[13, 1, 13, 5];
+            var totalsRange = summarySheet.Cells[14, 1, 14, 5];
             totalsRange.Style.Font.Bold = true;
 
             // Add cost breakdown
@@ -3248,34 +3356,34 @@ namespace LabourBudgetCalculator
             }
 
             // Add cost section
-            summarySheet.Cells[15, 1].Value = "COST BREAKDOWN";
-            summarySheet.Cells[15, 1].Style.Font.Bold = true;
+            summarySheet.Cells[16, 1].Value = "COST BREAKDOWN";
+            summarySheet.Cells[16, 1].Style.Font.Bold = true;
 
-            summarySheet.Cells[16, 1].Value = "Category";
-            summarySheet.Cells[16, 2].Value = "Regular Rate";
-            summarySheet.Cells[16, 3].Value = "Overtime Rate";
-            summarySheet.Cells[16, 4].Value = "Premium Rate";
-            summarySheet.Cells[16, 5].Value = "Total";
+            summarySheet.Cells[17, 1].Value = "Category";
+            summarySheet.Cells[17, 2].Value = "Regular Rate";
+            summarySheet.Cells[17, 3].Value = "Overtime Rate";
+            summarySheet.Cells[17, 4].Value = "Premium Rate";
+            summarySheet.Cells[17, 5].Value = "Total";
 
             // Format cost headers
-            var costHeaderRange = summarySheet.Cells[16, 1, 16, 5];
+            var costHeaderRange = summarySheet.Cells[17, 1, 17, 5];
             costHeaderRange.Style.Font.Bold = true;
             costHeaderRange.Style.Fill.PatternType = ExcelFillStyle.Solid;
             costHeaderRange.Style.Fill.BackgroundColor.SetColor(Color.LightGray);
 
             // Add labor costs
-            summarySheet.Cells[17, 1].Value = "Labor Cost";
-            summarySheet.Cells[17, 2].Value = laborRegularCost;
-            summarySheet.Cells[17, 3].Value = laborOvertimeCost;
-            summarySheet.Cells[17, 4].Value = laborPremiumCost;
-            summarySheet.Cells[17, 5].Value = laborRegularCost + laborOvertimeCost + laborPremiumCost;
+            summarySheet.Cells[18, 1].Value = "Labor Cost";
+            summarySheet.Cells[18, 2].Value = laborRegularCost;
+            summarySheet.Cells[18, 3].Value = laborOvertimeCost;
+            summarySheet.Cells[18, 4].Value = laborPremiumCost;
+            summarySheet.Cells[18, 5].Value = laborRegularCost + laborOvertimeCost + laborPremiumCost;
 
             // Add travel costs
-            summarySheet.Cells[18, 1].Value = "Travel Cost";
-            summarySheet.Cells[18, 2].Value = travelRegularCost;
-            summarySheet.Cells[18, 3].Value = travelOvertimeCost;
-            summarySheet.Cells[18, 4].Value = travelPremiumCost;
-            summarySheet.Cells[18, 5].Value = travelRegularCost + travelOvertimeCost + travelPremiumCost;
+            summarySheet.Cells[19, 1].Value = "Travel Cost";
+            summarySheet.Cells[19, 2].Value = travelRegularCost;
+            summarySheet.Cells[19, 3].Value = travelOvertimeCost;
+            summarySheet.Cells[19, 4].Value = travelPremiumCost;
+            summarySheet.Cells[19, 5].Value = travelRegularCost + travelOvertimeCost + travelPremiumCost;
 
             // Add expense totals
             decimal hotelTotal = 0;
@@ -3289,76 +3397,83 @@ namespace LabourBudgetCalculator
             {
                 foreach (DataGridViewRow row in dataGrid.Rows)
                 {
-                    if (row.Cells["Hotel"].Value != null)
-                        hotelTotal += Convert.ToDecimal(row.Cells["Hotel"].Value);
+                    try
+                    {
+                        if (row.Cells["Hotel"]?.Value != null)
+                            hotelTotal += Convert.ToDecimal(row.Cells["Hotel"].Value);
 
-                    if (row.Cells["Rental"].Value != null)
-                        rentalTotal += Convert.ToDecimal(row.Cells["Rental"].Value);
+                        if (row.Cells["Rental"]?.Value != null)
+                            rentalTotal += Convert.ToDecimal(row.Cells["Rental"].Value);
 
-                    if (row.Cells["Flight"].Value != null)
-                        flightTotal += Convert.ToDecimal(row.Cells["Flight"].Value);
+                        if (row.Cells["Flight"]?.Value != null)
+                            flightTotal += Convert.ToDecimal(row.Cells["Flight"].Value);
 
-                    if (row.Cells["Mileage"].Value != null)
-                        mileageTotal += Convert.ToDecimal(row.Cells["Mileage"].Value);
+                        if (row.Cells["Mileage"]?.Value != null)
+                            mileageTotal += Convert.ToDecimal(row.Cells["Mileage"].Value);
 
-                    if (row.Cells["PerDiem"].Value != null)
-                        perDiemTotal += Convert.ToDecimal(row.Cells["PerDiem"].Value);
+                        if (row.Cells["PerDiem"]?.Value != null)
+                            perDiemTotal += Convert.ToDecimal(row.Cells["PerDiem"].Value);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Error processing expense row: {ex.Message}");
+                    }
                 }
             }
 
             // Add expenses section
-            summarySheet.Cells[20, 1].Value = "EXPENSES SUMMARY";
-            summarySheet.Cells[20, 1].Style.Font.Bold = true;
+            summarySheet.Cells[21, 1].Value = "EXPENSES SUMMARY";
+            summarySheet.Cells[21, 1].Style.Font.Bold = true;
 
-            summarySheet.Cells[21, 1].Value = "Category";
-            summarySheet.Cells[21, 2].Value = "Amount";
+            summarySheet.Cells[22, 1].Value = "Category";
+            summarySheet.Cells[22, 2].Value = "Amount";
 
             // Format expense headers
-            var expenseHeaderRange = summarySheet.Cells[21, 1, 21, 2];
+            var expenseHeaderRange = summarySheet.Cells[22, 1, 22, 2];
             expenseHeaderRange.Style.Font.Bold = true;
             expenseHeaderRange.Style.Fill.PatternType = ExcelFillStyle.Solid;
             expenseHeaderRange.Style.Fill.BackgroundColor.SetColor(Color.LightGray);
 
             // Add expense items
-            summarySheet.Cells[22, 1].Value = "Hotel:";
-            summarySheet.Cells[22, 2].Value = hotelTotal;
+            summarySheet.Cells[23, 1].Value = "Hotel:";
+            summarySheet.Cells[23, 2].Value = hotelTotal;
 
-            summarySheet.Cells[23, 1].Value = "Rental Car:";
-            summarySheet.Cells[23, 2].Value = rentalTotal;
+            summarySheet.Cells[24, 1].Value = "Rental Car:";
+            summarySheet.Cells[24, 2].Value = rentalTotal;
 
-            summarySheet.Cells[24, 1].Value = "Flights:";
-            summarySheet.Cells[24, 2].Value = flightTotal;
+            summarySheet.Cells[25, 1].Value = "Flights:";
+            summarySheet.Cells[25, 2].Value = flightTotal;
 
-            summarySheet.Cells[25, 1].Value = "Mileage:";
-            summarySheet.Cells[25, 2].Value = mileageTotal;
+            summarySheet.Cells[26, 1].Value = "Mileage:";
+            summarySheet.Cells[26, 2].Value = mileageTotal;
 
-            summarySheet.Cells[26, 1].Value = "Per Diem:";
-            summarySheet.Cells[26, 2].Value = perDiemTotal;
+            summarySheet.Cells[27, 1].Value = "Per Diem:";
+            summarySheet.Cells[27, 2].Value = perDiemTotal;
 
             // Add expense 10% markup note
             decimal expensesWithMarkup = (hotelTotal + rentalTotal + flightTotal) * 1.1m + mileageTotal;
-            summarySheet.Cells[27, 1].Value = "Expense Total (incl. 10% markup on applicable items):";
-            summarySheet.Cells[27, 2].Value = expensesWithMarkup;
-            summarySheet.Cells[27, 1, 27, 2].Style.Font.Bold = true;
+            summarySheet.Cells[28, 1].Value = "Expense Total (incl. 10% markup on applicable items):";
+            summarySheet.Cells[28, 2].Value = expensesWithMarkup;
+            summarySheet.Cells[28, 1, 28, 2].Style.Font.Bold = true;
 
             // Add grand total
-            summarySheet.Cells[29, 1].Value = "GRAND TOTAL:";
-            summarySheet.Cells[29, 1].Style.Font.Bold = true;
-            summarySheet.Cells[29, 1].Style.Font.Size = 12;
+            summarySheet.Cells[30, 1].Value = "GRAND TOTAL:";
+            summarySheet.Cells[30, 1].Style.Font.Bold = true;
+            summarySheet.Cells[30, 1].Style.Font.Size = 12;
 
             decimal grandTotal = laborRegularCost + laborOvertimeCost + laborPremiumCost +
                                  travelRegularCost + travelOvertimeCost + travelPremiumCost +
                                  expensesWithMarkup + perDiemTotal;
 
-            summarySheet.Cells[29, 2].Value = grandTotal;
-            summarySheet.Cells[29, 2].Style.Font.Bold = true;
-            summarySheet.Cells[29, 2].Style.Font.Size = 12;
+            summarySheet.Cells[30, 2].Value = grandTotal;
+            summarySheet.Cells[30, 2].Style.Font.Bold = true;
+            summarySheet.Cells[30, 2].Style.Font.Size = 12;
 
             // Format currency cells
             var currencyRanges = new List<ExcelRange> {
-        summarySheet.Cells[17, 2, 18, 5],
-        summarySheet.Cells[22, 2, 27, 2],
-        summarySheet.Cells[29, 2]
+        summarySheet.Cells[18, 2, 19, 5],
+        summarySheet.Cells[23, 2, 28, 2],
+        summarySheet.Cells[30, 2]
     };
 
             foreach (var range in currencyRanges)
@@ -3367,7 +3482,7 @@ namespace LabourBudgetCalculator
             }
 
             // Format hour cells
-            summarySheet.Cells[11, 2, 13, 5].Style.Numberformat.Format = "#,##0.0";
+            summarySheet.Cells[12, 2, 14, 5].Style.Numberformat.Format = "#,##0.0";
 
             // Auto-fit all columns
             summarySheet.Cells[summarySheet.Dimension.Address].AutoFitColumns();
@@ -3911,6 +4026,10 @@ namespace LabourBudgetCalculator
                 dtpEndDate.Checked = false;
                 dtpEndDate.CustomFormat = " ";
             }
+
+            CheckBox chkHotel = GetControlSafely<CheckBox>("chkHotel");
+            if (chkHotel != null)
+                chkHotel.Checked = false;
 
             // Enable days on site and start day controls
             EnableDaysOnSiteControl(true);
