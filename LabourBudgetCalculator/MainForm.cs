@@ -1833,6 +1833,15 @@ namespace LabourBudgetCalculator
             CheckBox chkEmergency = (CheckBox)Controls.Find("chkEmergency", true)[0];
             bool isEmergency = chkEmergency.Checked;
 
+            // Get the discount value
+            NumericUpDown numDiscount = (NumericUpDown)Controls.Find("numDiscount", true)[0];
+            decimal discountPercent = numDiscount.Value;
+            decimal discountMultiplier = 1.0m;
+            if (discountPercent > 0)
+            {
+                discountMultiplier = 1 - (discountPercent / 100);
+            }
+
             // Get the rate textboxes
             TextBox txtRegularLabour = (TextBox)Controls.Find("txtRegularLabour", true)[0];
             TextBox txtOvertimeLabour = (TextBox)Controls.Find("txtOvertimeLabour", true)[0];
@@ -1854,39 +1863,40 @@ namespace LabourBudgetCalculator
 
             if (isEmergency)
             {
-                // Show premium rates for all categories
-                txtRegularLabour.Text = currentRateSheet.PremiumLabourRate.ToString("F2");
-                txtOvertimeLabour.Text = currentRateSheet.PremiumLabourRate.ToString("F2");
-                txtPremiumLabour.Text = currentRateSheet.PremiumLabourRate.ToString("F2");
-                txtRegularTravel.Text = currentRateSheet.PremiumTravelRate.ToString("F2");
-                txtOvertimeTravel.Text = currentRateSheet.PremiumTravelRate.ToString("F2");
-                txtPremiumTravel.Text = currentRateSheet.PremiumTravelRate.ToString("F2");
+                // Show premium rates for all categories, with discount applied
+                decimal discountedPremiumLabour = currentRateSheet.PremiumLabourRate * discountMultiplier;
+                decimal discountedPremiumTravel = currentRateSheet.PremiumTravelRate * discountMultiplier;
+
+                txtRegularLabour.Text = discountedPremiumLabour.ToString("F2");
+                txtOvertimeLabour.Text = discountedPremiumLabour.ToString("F2");
+                txtPremiumLabour.Text = discountedPremiumLabour.ToString("F2");
+                txtRegularTravel.Text = discountedPremiumTravel.ToString("F2");
+                txtOvertimeTravel.Text = discountedPremiumTravel.ToString("F2");
+                txtPremiumTravel.Text = discountedPremiumTravel.ToString("F2");
 
                 // Set text color to red for ALL textboxes
                 foreach (TextBox textBox in rateTextBoxes)
                 {
-                    // Make sure ReadOnly is true so ForeColor will work
                     textBox.ReadOnly = true;
-                    textBox.BackColor = SystemColors.Window; // Keep background white
+                    textBox.BackColor = SystemColors.Window;
                     textBox.ForeColor = Color.Red;
                 }
             }
             else
             {
-                // Show normal rates
-                txtRegularLabour.Text = currentRateSheet.RegularLabourRate.ToString("F2");
-                txtOvertimeLabour.Text = currentRateSheet.OvertimeLabourRate.ToString("F2");
-                txtPremiumLabour.Text = currentRateSheet.PremiumLabourRate.ToString("F2");
-                txtRegularTravel.Text = currentRateSheet.RegularTravelRate.ToString("F2");
-                txtOvertimeTravel.Text = currentRateSheet.OvertimeTravelRate.ToString("F2");
-                txtPremiumTravel.Text = currentRateSheet.PremiumTravelRate.ToString("F2");
+                // Show normal rates with discount applied
+                txtRegularLabour.Text = (currentRateSheet.RegularLabourRate * discountMultiplier).ToString("F2");
+                txtOvertimeLabour.Text = (currentRateSheet.OvertimeLabourRate * discountMultiplier).ToString("F2");
+                txtPremiumLabour.Text = (currentRateSheet.PremiumLabourRate * discountMultiplier).ToString("F2");
+                txtRegularTravel.Text = (currentRateSheet.RegularTravelRate * discountMultiplier).ToString("F2");
+                txtOvertimeTravel.Text = (currentRateSheet.OvertimeTravelRate * discountMultiplier).ToString("F2");
+                txtPremiumTravel.Text = (currentRateSheet.PremiumTravelRate * discountMultiplier).ToString("F2");
 
                 // Reset text color to default for ALL textboxes
                 foreach (TextBox textBox in rateTextBoxes)
                 {
-                    // Keep ReadOnly property
                     textBox.ReadOnly = true;
-                    textBox.BackColor = SystemColors.Window; // Keep background white
+                    textBox.BackColor = SystemColors.Window;
                     textBox.ForeColor = SystemColors.WindowText;
                 }
             }
@@ -1907,7 +1917,10 @@ namespace LabourBudgetCalculator
             NumericUpDown numDiscount = (NumericUpDown)Controls.Find("numDiscount", true)[0];
             CheckBox chkEmergency = (CheckBox)Controls.Find("chkEmergency", true)[0];
 
-            numDiscount.ValueChanged += (s, e) => CalculateAndDisplayResults();
+            numDiscount.ValueChanged += (s, e) => {
+                UpdateRateDisplay();  // Add this line
+                CalculateAndDisplayResults();
+            };
             chkEmergency.CheckedChanged += (s, e) => CalculateAndDisplayResults();
 
             // Travel controls
@@ -2366,17 +2379,7 @@ namespace LabourBudgetCalculator
                 decimal totalTravelCost = (totalRegularTravelHours * regularTravelRate) +
                                        (totalOvertimeTravelHours * overtimeTravelRate) +
                                        (totalPremiumTravelHours * premiumTravelRate);
-
-                // Apply discount if any
-                NumericUpDown numDiscount = (NumericUpDown)Controls.Find("numDiscount", true)[0];
-                decimal discountPercent = numDiscount.Value;
-                if (discountPercent > 0)
-                {
-                    decimal discountMultiplier = (1 - (discountPercent / 100));
-                    totalLaborCost *= discountMultiplier;
-                    totalTravelCost *= discountMultiplier;
-                }
-
+           
                 // Update summary displays
                 Label lblLabourHoursValue = (Label)Controls.Find("lblLabourHoursValue", true)[0];
                 Label lblTravelHoursValue = (Label)Controls.Find("lblTravelHoursValue", true)[0];
