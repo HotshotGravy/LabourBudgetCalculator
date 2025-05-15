@@ -3240,31 +3240,39 @@ namespace LabourBudgetCalculator
             decimal discount = GetNumericValueSafely("numDiscount", 0);
             bool emergencyRate = GetControlSafely<CheckBox>("chkEmergency")?.Checked ?? false;
 
-            // Title
+            // Title section with better formatting
             summarySheet.Cells[1, 1].Value = $"PROJECT: {projectNumber} - {customer}";
-            summarySheet.Cells[1, 1].Style.Font.Size = 14;
+            summarySheet.Cells[1, 1].Style.Font.Size = 16;
             summarySheet.Cells[1, 1].Style.Font.Bold = true;
-            summarySheet.Cells[1, 1, 1, 6].Merge = true;
+            summarySheet.Cells[1, 1, 1, 4].Merge = true;
+            summarySheet.Cells[1, 1].Style.HorizontalAlignment = ExcelHorizontalAlignment.Left;
 
             summarySheet.Cells[2, 1].Value = "Time & Expense Estimate";
             summarySheet.Cells[2, 1].Style.Font.Size = 12;
-            summarySheet.Cells[2, 1, 2, 6].Merge = true;
+            summarySheet.Cells[2, 1, 2, 4].Merge = true;
+            summarySheet.Cells[2, 1].Style.HorizontalAlignment = ExcelHorizontalAlignment.Left;
 
-            int currentRow = 4;
+            // Add horizontal line after title
+            summarySheet.Cells[3, 1, 3, 4].Style.Border.Bottom.Style = ExcelBorderStyle.Medium;
 
-            // Discount section (only if discount > 0)
+            int currentRow = 5;
+
+            // Discount section with better formatting (only if discount > 0)
             if (discount > 0)
             {
                 summarySheet.Cells[currentRow, 1].Value = $"DISCOUNT APPLIED: {discount}%";
                 summarySheet.Cells[currentRow, 1].Style.Font.Bold = true;
-                summarySheet.Cells[currentRow, 1].Style.Font.Color.SetColor(Color.Red);
+                summarySheet.Cells[currentRow, 1].Style.Font.Size = 11;
+                summarySheet.Cells[currentRow, 1].Style.Font.Color.SetColor(Color.DarkRed);
+                summarySheet.Cells[currentRow, 1, currentRow, 4].Merge = true;
                 currentRow += 2;
             }
 
-            // RATES section
+            // RATES section with better formatting
             summarySheet.Cells[currentRow, 1].Value = "RATES";
             summarySheet.Cells[currentRow, 1].Style.Font.Bold = true;
-            summarySheet.Cells[currentRow, 1].Style.Font.Size = 12;
+            summarySheet.Cells[currentRow, 1].Style.Font.Size = 14;
+            summarySheet.Cells[currentRow, 1].Style.Font.Color.SetColor(Color.DarkBlue);
             currentRow++;
 
             // Get display rates
@@ -3275,10 +3283,7 @@ namespace LabourBudgetCalculator
             decimal overtimeTravelRate = GetNumericValueSafely("txtOvertimeTravel");
             decimal premiumTravelRate = GetNumericValueSafely("txtPremiumTravel");
 
-            // Add discount note if applicable
-            string discountNote = discount > 0 ? $" ({discount}% discount applied)" : "";
-
-            // Create rates table
+            // Create enhanced rates table
             summarySheet.Cells[currentRow, 1].Value = "";
             summarySheet.Cells[currentRow, 2].Value = "Regular";
             summarySheet.Cells[currentRow, 3].Value = "Overtime";
@@ -3289,34 +3294,52 @@ namespace LabourBudgetCalculator
             headerRange.Style.Fill.PatternType = ExcelFillStyle.Solid;
             headerRange.Style.Fill.BackgroundColor.SetColor(Color.LightGray);
             headerRange.Style.Border.BorderAround(ExcelBorderStyle.Thin);
+            headerRange.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+            headerRange.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+            headerRange.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+            headerRange.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+            headerRange.Style.Border.Right.Style = ExcelBorderStyle.Thin;
             currentRow++;
 
-            // Labour rates
+            // Labour rates row
+            string discountNote = discount > 0 ? $" ({discount}% discount applied)" : "";
             summarySheet.Cells[currentRow, 1].Value = $"Labour{discountNote}";
             summarySheet.Cells[currentRow, 2].Value = regularLabourRate;
             summarySheet.Cells[currentRow, 3].Value = overtimeLabourRate;
             summarySheet.Cells[currentRow, 4].Value = premiumLabourRate;
             var labourRange = summarySheet.Cells[currentRow, 1, currentRow, 4];
-            labourRange.Style.Border.BorderAround(ExcelBorderStyle.Thin);
+            labourRange.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+            labourRange.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+            labourRange.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+            labourRange.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+            summarySheet.Cells[currentRow, 2, currentRow, 4].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
             currentRow++;
 
-            // Travel rates
+            // Travel rates row
             summarySheet.Cells[currentRow, 1].Value = $"Travel{discountNote}";
             summarySheet.Cells[currentRow, 2].Value = regularTravelRate;
             summarySheet.Cells[currentRow, 3].Value = overtimeTravelRate;
             summarySheet.Cells[currentRow, 4].Value = premiumTravelRate;
             var travelRange = summarySheet.Cells[currentRow, 1, currentRow, 4];
-            travelRange.Style.Border.BorderAround(ExcelBorderStyle.Thin);
+            travelRange.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+            travelRange.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+            travelRange.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+            travelRange.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+            summarySheet.Cells[currentRow, 2, currentRow, 4].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
             currentRow += 2;
 
             // Format currency in rates table
             summarySheet.Cells[currentRow - 2, 2, currentRow - 1, 4].Style.Numberformat.Format = "$#,##0.00";
 
-            // PROJECT OVERVIEW section
+            // PROJECT OVERVIEW section with better formatting
             summarySheet.Cells[currentRow, 1].Value = "PROJECT OVERVIEW";
             summarySheet.Cells[currentRow, 1].Style.Font.Bold = true;
-            summarySheet.Cells[currentRow, 1].Style.Font.Size = 12;
+            summarySheet.Cells[currentRow, 1].Style.Font.Size = 14;
+            summarySheet.Cells[currentRow, 1].Style.Font.Color.SetColor(Color.DarkBlue);
             currentRow++;
+
+            // Create overview table with borders
+            int overviewStartRow = currentRow;
 
             // Get dates
             DateTimePicker dtpStartDate = GetControlSafely<DateTimePicker>("dtpStartDate");
@@ -3333,6 +3356,7 @@ namespace LabourBudgetCalculator
                     dateRange = $"Until {dtpEndDate.Value:MMM d, yyyy}";
             }
 
+            // Create overview information with consistent spacing
             summarySheet.Cells[currentRow, 1].Value = "Dates:";
             summarySheet.Cells[currentRow, 2].Value = dateRange;
             currentRow++;
@@ -3393,9 +3417,18 @@ namespace LabourBudgetCalculator
 
             summarySheet.Cells[currentRow, 1].Value = "Emergency Rates:";
             summarySheet.Cells[currentRow, 2].Value = emergencyRate ? "Yes" : "No";
+
+            // Add borders to overview section
+            var overviewRange = summarySheet.Cells[overviewStartRow, 1, currentRow, 2];
+            overviewRange.Style.Border.BorderAround(ExcelBorderStyle.Thin);
+            overviewRange.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+            overviewRange.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+            overviewRange.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+            overviewRange.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+
             currentRow += 2;
 
-            // SUMMARY section
+            // SUMMARY section with enhanced formatting
             summarySheet.Cells[currentRow, 1].Value = "SUMMARY";
             summarySheet.Cells[currentRow, 1].Style.Font.Bold = true;
             summarySheet.Cells[currentRow, 1].Style.Font.Size = 14;
@@ -3410,7 +3443,9 @@ namespace LabourBudgetCalculator
             decimal totalExpenses = GetCurrencyValue("lblExpensesCostValue");
             decimal grandTotal = GetCurrencyValue("lblGrandTotal");
 
-            // Create summary table
+            // Create enhanced summary table
+            int summaryStartRow = currentRow;
+
             summarySheet.Cells[currentRow, 1].Value = "Labor Hours:";
             summarySheet.Cells[currentRow, 2].Value = $"{totalLaborHours} hours";
             summarySheet.Cells[currentRow, 3].Value = "Labor Cost:";
@@ -3427,23 +3462,47 @@ namespace LabourBudgetCalculator
             summarySheet.Cells[currentRow, 2].Value = "";
             summarySheet.Cells[currentRow, 3].Value = "Expenses:";
             summarySheet.Cells[currentRow, 4].Value = totalExpenses;
-            currentRow += 2;
+            currentRow++;
 
-            // Grand total
+            // Add borders to summary table
+            var summaryRange = summarySheet.Cells[summaryStartRow, 1, currentRow - 1, 4];
+            summaryRange.Style.Border.BorderAround(ExcelBorderStyle.Thin);
+            summaryRange.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+            summaryRange.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+            summaryRange.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+            summaryRange.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+
+            currentRow++;
+
+            // Grand total with enhanced formatting
             summarySheet.Cells[currentRow, 1].Value = "TOTAL ESTIMATE:";
             summarySheet.Cells[currentRow, 1].Style.Font.Bold = true;
             summarySheet.Cells[currentRow, 1].Style.Font.Size = 16;
+            summarySheet.Cells[currentRow, 1].Style.Font.Color.SetColor(Color.DarkBlue);
             summarySheet.Cells[currentRow, 2].Value = grandTotal;
             summarySheet.Cells[currentRow, 2].Style.Font.Bold = true;
             summarySheet.Cells[currentRow, 2].Style.Font.Size = 16;
+            summarySheet.Cells[currentRow, 2].Style.Font.Color.SetColor(Color.DarkBlue);
 
-            // Format currency values
-            summarySheet.Cells[currentRow - 5, 4].Style.Numberformat.Format = "$#,##0.00";
-            summarySheet.Cells[currentRow - 4, 4].Style.Numberformat.Format = "$#,##0.00";
-            summarySheet.Cells[currentRow - 3, 4].Style.Numberformat.Format = "$#,##0.00";
+            // Add border around total estimate
+            var totalRange = summarySheet.Cells[currentRow, 1, currentRow, 2];
+            totalRange.Style.Border.BorderAround(ExcelBorderStyle.Medium);
+            totalRange.Style.Fill.PatternType = ExcelFillStyle.Solid;
+            totalRange.Style.Fill.BackgroundColor.SetColor(Color.FromArgb(240, 248, 255)); // Very light blue
+
+            // Format currency values in summary section
+            summarySheet.Cells[summaryStartRow, 4].Style.Numberformat.Format = "$#,##0.00";
+            summarySheet.Cells[summaryStartRow + 1, 4].Style.Numberformat.Format = "$#,##0.00";
+            summarySheet.Cells[summaryStartRow + 2, 4].Style.Numberformat.Format = "$#,##0.00";
             summarySheet.Cells[currentRow, 2].Style.Numberformat.Format = "$#,##0.00";
 
-            // Auto-fit columns
+            // Set column widths for better appearance
+            summarySheet.Column(1).Width = 20;  // Labels
+            summarySheet.Column(2).Width = 15;  // Values
+            summarySheet.Column(3).Width = 15;  // Labels
+            summarySheet.Column(4).Width = 15;  // Values
+
+            // Auto-fit columns (will only make them wider if needed)
             summarySheet.Cells[summarySheet.Dimension.Address].AutoFitColumns();
         }
 

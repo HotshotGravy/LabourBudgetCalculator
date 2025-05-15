@@ -1,4 +1,5 @@
-﻿using System;
+﻿using OfficeOpenXml.FormulaParsing.Excel.Functions.DateTime;
+using System;
 using System.Windows.Forms;
 
 namespace LabourBudgetCalculator
@@ -10,7 +11,7 @@ namespace LabourBudgetCalculator
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new MainForm());
+            Application.Run(new WelcomeForm());
         }
     }
 }
