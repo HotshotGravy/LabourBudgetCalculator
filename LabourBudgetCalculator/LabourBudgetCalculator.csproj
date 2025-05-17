@@ -94,6 +94,12 @@
     <Compile Include="CommissioningProjectSelectionForm.Designer.cs">
       <DependentUpon>CommissioningProjectSelectionForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="CommissioningResultsWindow.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="CommissioningResultsWindow.Designer.cs">
+      <DependentUpon>CommissioningResultsWindow.cs</DependentUpon>
+    </Compile>
     <Compile Include="Helpers\DataManager.cs" />
     <Compile Include="MainForm.cs">
       <SubType>Form</SubType>
@@ -102,6 +108,7 @@
       <DependentUpon>MainForm.cs</DependentUpon>
     </Compile>
     <Compile Include="Models\CalculationResult.cs" />
+    <Compile Include="Models\CommissioningModels.cs" />
     <Compile Include="Models\RateSheet.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
