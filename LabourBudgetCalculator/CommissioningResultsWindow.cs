@@ -8,7 +8,7 @@ using System.Text;
 using LabourBudgetCalculator.Models;
 using LabourBudgetCalculator.Helpers;
 
-namespace LabourBudgetCalculator.Forms
+namespace LabourBudgetCalculator
 {
     public partial class CommissioningResultsWindow : Form
     {
@@ -28,9 +28,9 @@ namespace LabourBudgetCalculator.Forms
         // Constructor
         public CommissioningResultsWindow(CommissioningProject project)
         {
-            InitializeComponent();
+           // InitializeComponent();
 
-            _project = project;
+            _project = project ?? throw new ArgumentNullException(nameof(project));
 
             // Configure form
             this.Text = $"Results - {_project.ProjectName}";
@@ -52,20 +52,7 @@ namespace LabourBudgetCalculator.Forms
             RefreshDisplay();
         }
 
-        private void InitializeComponent()
-        {
-            this.SuspendLayout();
-
-            // Form properties
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(1000, 700);
-            this.Name = "CommissioningResultsWindow";
-            this.Text = "Commissioning Results";
-            this.FormClosed += new System.Windows.Forms.FormClosedEventHandler(this.CommissioningResultsWindow_FormClosed);
-
-            this.ResumeLayout(false);
-        }
+ 
 
         private void CommissioningResultsWindow_FormClosed(object sender, FormClosedEventArgs e)
         {
@@ -193,7 +180,7 @@ namespace LabourBudgetCalculator.Forms
             return label;
         }
 
-        private Label AddValueCell(TableLayoutPanel panel, string text, int row, int col)
+        private Label AddValueCell(TableLayoutPanel panel, string text, int row, int col, bool highlightNegative = false)
         {
             var label = new Label
             {
@@ -203,8 +190,100 @@ namespace LabourBudgetCalculator.Forms
                 Font = new Font(Font.FontFamily, 10, FontStyle.Regular)
             };
 
+            // Highlight negative values in red if requested
+            if (highlightNegative && text.Contains("-"))
+            {
+                label.ForeColor = Color.Red;
+            }
+
             panel.Controls.Add(label, col, row);
             return label;
+        }
+
+        // Add missing method for day data cells
+        private void AddDayDataCells(TableLayoutPanel grid, CommissioningResource resource, int day, int dataType,
+            int colOffset, int rowOffset, decimal plannedValue, decimal actualValue,
+            Dictionary<string, string> cellValues, bool isMoney)
+        {
+            // Unique cell identifiers
+            string plannedId = $"p_{resource.ResourceID}_{day}_{dataType}";
+            string actualId = $"a_{resource.ResourceID}_{day}_{dataType}";
+
+            // Format values appropriately
+            string plannedText = isMoney ? $"${plannedValue:F2}" : $"{plannedValue:F1}";
+
+            // Use stored value if it exists, otherwise use default
+            string actualText;
+            if (cellValues.ContainsKey(actualId))
+            {
+                actualText = cellValues[actualId];
+            }
+            else
+            {
+                actualText = isMoney ? $"${actualValue:F2}" : $"{actualValue:F1}";
+            }
+
+            // Calculate delta
+            decimal delta = actualValue - plannedValue;
+            string deltaText = isMoney ? $"${delta:F2}" : $"{delta:F1}";
+
+            // Create planned cell (read-only)
+            var plannedLabel = new Label
+            {
+                Text = plannedText,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Dock = DockStyle.Fill,
+                Font = new Font(Font.FontFamily, 8, FontStyle.Regular)
+            };
+
+            // Create actual cell (editable)
+            var actualTextBox = new TextBox
+            {
+                Text = actualText.Replace("$", ""),
+                TextAlign = HorizontalAlignment.Center,
+                Dock = DockStyle.Fill,
+                Font = new Font(Font.FontFamily, 8, FontStyle.Regular),
+                Tag = new CellData { Resource = resource, Day = day, DataType = dataType }
+            };
+            actualTextBox.TextChanged += TextBox_TextChanged;
+            actualTextBox.Leave += TextBox_Leave;
+
+            // Add to tracked cells
+            _editableCells[actualId] = actualTextBox;
+
+            // Create delta cell (calculated)
+            var deltaLabel = new Label
+            {
+                Text = deltaText,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Dock = DockStyle.Fill,
+                Font = new Font(Font.FontFamily, 8, FontStyle.Regular),
+                ForeColor = delta > 0 ? Color.Red : SystemColors.ControlText
+            };
+
+            // Add cells to grid
+            grid.Controls.Add(plannedLabel, colOffset, rowOffset);
+            grid.Controls.Add(actualTextBox, colOffset + 1, rowOffset);
+            grid.Controls.Add(deltaLabel, colOffset + 2, rowOffset);
+        }
+
+        // Add missing method for money cells
+        private void AddMoneyCell(TableLayoutPanel grid, int col, int row, decimal value, bool highlightNegative)
+        {
+            var label = new Label
+            {
+                Text = $"${value:F2}",
+                TextAlign = ContentAlignment.MiddleCenter,
+                Dock = DockStyle.Fill,
+                Font = new Font(Font.FontFamily, 8, FontStyle.Regular)
+            };
+
+            if (highlightNegative && value < 0)
+            {
+                label.ForeColor = Color.Red;
+            }
+
+            grid.Controls.Add(label, col, row);
         }
 
         private void RefreshDisplay()
@@ -237,20 +316,20 @@ namespace LabourBudgetCalculator.Forms
                     // Planned
                     else if (i == 1)
                     {
-                        label.Text = $"${_project.PlannedTotal ?? 0:N2}";
+                        label.Text = $"${_project.PlannedTotal:N2}";
                     }
                     // Current
                     else if (i == 2)
                     {
-                        label.Text = $"${_project.CurrentTotal ?? 0:N2}";
+                        label.Text = $"${_project.CurrentTotal:N2}";
                     }
                     // Forecast
                     else if (i == 3)
                     {
-                        label.Text = $"${_project.ForecastTotal ?? 0:N2}";
+                        label.Text = $"${_project.ForecastTotal:N2}";
 
                         // Red if over quoted
-                        if ((_project.ForecastTotal ?? 0) > _project.InitialEstimate)
+                        if (_project.ForecastTotal > _project.InitialEstimate)
                         {
                             label.ForeColor = Color.Red;
                         }
@@ -262,7 +341,7 @@ namespace LabourBudgetCalculator.Forms
                     // Delta (Forecast - Quoted)
                     else if (i == 4)
                     {
-                        decimal delta = (_project.ForecastTotal ?? 0) - _project.InitialEstimate;
+                        decimal delta = _project.ForecastTotal - _project.InitialEstimate;
                         label.Text = $"${delta:N2}";
 
                         // Red if negative
@@ -409,7 +488,7 @@ namespace LabourBudgetCalculator.Forms
                 grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, dayBoxWidth / 3));
 
                 // Get the date for this day
-                DateTime date = resource.StartDate?.AddDays(day) ?? DateTime.Today.AddDays(day);
+                DateTime date = resource.StartDate.AddDays(day);
                 string dateText = date.ToString("MMM dd - ddd");
 
                 // Date header spanning 3 columns (Planned, Actual, Delta)
@@ -677,6 +756,7 @@ namespace LabourBudgetCalculator.Forms
 
                 // Labor hours
                 plannedRegularLabourHours += dayData.PlannedRegularLabourHours;
+                // Labor hours (continued)
                 plannedOvertimeLabourHours += dayData.PlannedOvertimeLabourHours;
                 plannedPremiumLabourHours += dayData.PlannedPremiumLabourHours;
 
@@ -709,19 +789,111 @@ namespace LabourBudgetCalculator.Forms
 
             // Add totals to grid
             // Labor hours
-            AddValueCell(grid, totalCol, 2, plannedRegularLabourHours.ToString("F1"), false);
-            AddValueCell(grid, totalCol + 1, 2, actualRegularLabourHours.ToString("F1"), false);
-            AddValueCell(grid, totalCol + 2, 2, (actualRegularLabourHours - plannedRegularLabourHours).ToString("F1"), false);
+            AddValueCell(grid, plannedRegularLabourHours.ToString("F1"), totalCol, 2);
+            AddValueCell(grid, actualRegularLabourHours.ToString("F1"), totalCol + 1, 2);
+            AddValueCell(grid, (actualRegularLabourHours - plannedRegularLabourHours).ToString("F1"), totalCol + 2, 2);
 
-            AddValueCell(grid, totalCol, 3, plannedOvertimeLabourHours.ToString("F1"), false);
-            AddValueCell(grid, totalCol + 1, 3, actualOvertimeLabourHours.ToString("F1"), false);
-            AddValueCell(grid, totalCol + 2, 3, (actualOvertimeLabourHours - plannedOvertimeLabourHours).ToString("F1"), false);
+            AddValueCell(grid, plannedOvertimeLabourHours.ToString("F1"), totalCol, 3);
+            AddValueCell(grid, actualOvertimeLabourHours.ToString("F1"), totalCol + 1, 3);
+            AddValueCell(grid, (actualOvertimeLabourHours - plannedOvertimeLabourHours).ToString("F1"), totalCol + 2, 3);
 
-            AddValueCell(grid, totalCol, 4, plannedPremiumLabourHours.ToString("F1"), false);
-            AddValueCell(grid, totalCol + 1, 4, actual
+            AddValueCell(grid, plannedPremiumLabourHours.ToString("F1"), totalCol, 4);
+            AddValueCell(grid, actualPremiumLabourHours.ToString("F1"), totalCol + 1, 4);
+            AddValueCell(grid, (actualPremiumLabourHours - plannedPremiumLabourHours).ToString("F1"), totalCol + 2, 4);
 
-                // Helper class to track cell data
-private class CellData
+            // Travel hours
+            AddValueCell(grid, plannedRegularTravelHours.ToString("F1"), totalCol, 5);
+            AddValueCell(grid, actualRegularTravelHours.ToString("F1"), totalCol + 1, 5);
+            AddValueCell(grid, (actualRegularTravelHours - plannedRegularTravelHours).ToString("F1"), totalCol + 2, 5);
+
+            AddValueCell(grid, plannedOvertimeTravelHours.ToString("F1"), totalCol, 6);
+            AddValueCell(grid, actualOvertimeTravelHours.ToString("F1"), totalCol + 1, 6);
+            AddValueCell(grid, (actualOvertimeTravelHours - plannedOvertimeTravelHours).ToString("F1"), totalCol + 2, 6);
+
+            AddValueCell(grid, plannedPremiumTravelHours.ToString("F1"), totalCol, 7);
+            AddValueCell(grid, actualPremiumTravelHours.ToString("F1"), totalCol + 1, 7);
+            AddValueCell(grid, (actualPremiumTravelHours - plannedPremiumTravelHours).ToString("F1"), totalCol + 2, 7);
+
+            // Calculate service/travel subtotals
+            decimal plannedServiceTravel =
+                (plannedRegularLabourHours * resource.RegularLabourRate) +
+                (plannedOvertimeLabourHours * resource.OvertimeLabourRate) +
+                (plannedPremiumLabourHours * resource.PremiumLabourRate) +
+                (plannedRegularTravelHours * resource.RegularTravelRate) +
+                (plannedOvertimeTravelHours * resource.OvertimeTravelRate) +
+                (plannedPremiumTravelHours * resource.PremiumTravelRate);
+
+            decimal actualServiceTravel =
+                (actualRegularLabourHours * resource.RegularLabourRate) +
+                (actualOvertimeLabourHours * resource.OvertimeLabourRate) +
+                (actualPremiumLabourHours * resource.PremiumLabourRate) +
+                (actualRegularTravelHours * resource.RegularTravelRate) +
+                (actualOvertimeTravelHours * resource.OvertimeTravelRate) +
+                (actualPremiumTravelHours * resource.PremiumTravelRate);
+
+            decimal deltaServiceTravel = actualServiceTravel - plannedServiceTravel;
+
+            // Add service/travel subtotal row
+            AddMoneyCell(grid, totalCol, 8, plannedServiceTravel, false);
+            AddMoneyCell(grid, totalCol + 1, 8, actualServiceTravel, false);
+            AddMoneyCell(grid, totalCol + 2, 8, deltaServiceTravel, true);
+
+            // Expenses
+            AddValueCell(grid, $"${plannedMileageCost:F2}", totalCol, 9);
+            AddValueCell(grid, $"${actualMileageCost:F2}", totalCol + 1, 9);
+            AddValueCell(grid, $"${actualMileageCost - plannedMileageCost:F2}", totalCol + 2, 9);
+
+            AddValueCell(grid, $"${plannedPerDiemCost:F2}", totalCol, 10);
+            AddValueCell(grid, $"${actualPerDiemCost:F2}", totalCol + 1, 10);
+            AddValueCell(grid, $"${actualPerDiemCost - plannedPerDiemCost:F2}", totalCol + 2, 10);
+
+            AddValueCell(grid, $"${plannedFlightCost:F2}", totalCol, 11);
+            AddValueCell(grid, $"${actualFlightCost:F2}", totalCol + 1, 11);
+            AddValueCell(grid, $"${actualFlightCost - plannedFlightCost:F2}", totalCol + 2, 11);
+
+            AddValueCell(grid, $"${plannedRentalCarCost:F2}", totalCol, 12);
+            AddValueCell(grid, $"${actualRentalCarCost:F2}", totalCol + 1, 12);
+            AddValueCell(grid, $"${actualRentalCarCost - plannedRentalCarCost:F2}", totalCol + 2, 12);
+
+            AddValueCell(grid, $"${plannedHotelCost:F2}", totalCol, 13);
+            AddValueCell(grid, $"${actualHotelCost:F2}", totalCol + 1, 13);
+            AddValueCell(grid, $"${actualHotelCost - plannedHotelCost:F2}", totalCol + 2, 13);
+
+            // Calculate expenses subtotal
+            decimal plannedExpenses =
+                plannedMileageCost +
+                plannedPerDiemCost +
+                plannedFlightCost +
+                plannedRentalCarCost +
+                plannedHotelCost;
+
+            decimal actualExpenses =
+                actualMileageCost +
+                actualPerDiemCost +
+                actualFlightCost +
+                actualRentalCarCost +
+                actualHotelCost;
+
+            decimal deltaExpenses = actualExpenses - plannedExpenses;
+
+            // Add expenses subtotal row
+            AddMoneyCell(grid, totalCol, 14, plannedExpenses, false);
+            AddMoneyCell(grid, totalCol + 1, 14, actualExpenses, false);
+            AddMoneyCell(grid, totalCol + 2, 14, deltaExpenses, true);
+
+            // Calculate totals
+            decimal plannedTotal = plannedServiceTravel + plannedExpenses;
+            decimal actualTotal = actualServiceTravel + actualExpenses;
+            decimal deltaTotal = actualTotal - plannedTotal;
+
+            // Add totals row
+            AddMoneyCell(grid, totalCol, 15, plannedTotal, false);
+            AddMoneyCell(grid, totalCol + 1, 15, actualTotal, false);
+            AddMoneyCell(grid, totalCol + 2, 15, deltaTotal, true);
+        }
+
+        // Helper class to track cell data
+        private class CellData
         {
             public CommissioningResource Resource { get; set; }
             public int Day { get; set; }
@@ -887,7 +1059,7 @@ private class CellData
                     writer.Write("Category,");
                     for (int day = minDay; day <= maxDay; day++)
                     {
-                        DateTime date = resource.StartDate?.AddDays(day) ?? DateTime.Today.AddDays(day);
+                        DateTime date = resource.StartDate.AddDays(day);
                         writer.Write($"{date.ToString("MMM dd")}_Planned,{date.ToString("MMM dd")}_Actual,{date.ToString("MMM dd")}_Delta,");
                     }
                     writer.WriteLine("Total_Planned,Total_Actual,Total_Delta");
@@ -1034,83 +1206,6 @@ private class CellData
             writer.WriteLine($"${plannedTotal:F2},${actualTotal:F2},${totalDelta:F2}");
         }
 
-        private void ViewResultsButton_Click(object sender, EventArgs e)
-        {
-            // Apply any pending changes
-            ApplyPendingChanges();
-
-            // Check if project exists
-            if (currentProject == null)
-            {
-                MessageBox.Show("No project loaded.", "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-
-            // Create and show the results window if not already open
-            if (_resultsWindow == null || _resultsWindow.IsDisposed)
-            {
-                _resultsWindow = new CommissioningResultsWindow(currentProject);
-                _resultsWindow.Show();
-            }
-            else
-            {
-                // If results window already exists, bring it to front
-                _resultsWindow.BringToFront();
-            }
-        }
-
-        private void ApplyPendingChanges()
-        {
-            // Save the current resource being edited
-            if (tabResources.SelectedTab != null)
-            {
-                var resource = tabResources.SelectedTab.Tag as CommissioningResource;
-                if (resource != null)
-                {
-                    UpdateResourceFromUI(resource);
-                }
-            }
-
-            // Make sure all resources have initialized daily data
-            foreach (var resource in currentProject.Resources)
-            {
-                if (resource.DailyData == null || resource.DailyData.Count == 0)
-                {
-                    resource.InitializeFromSchedule();
-                }
-            }
-
-            // Recalculate project totals
-            currentProject.CalculateTotals();
-        }
-
-        private void CommissioningDataEntryForm_FormClosed(object sender, FormClosedEventArgs e)
-        {
-            // Close results window if open
-            if (_resultsWindow != null && !_resultsWindow.IsDisposed)
-            {
-                _resultsWindow.Close();
-            }
-        }
-
-
-        protected override void OnFormClosing(FormClosedEventArgs e)
-        {
-            // Save project when closing
-            SaveProject();
-
-            // Close results window if open
-            if (_resultsWindow != null && !_resultsWindow.IsDisposed)
-            {
-                _resultsWindow.Close();
-            }
-
-            autoSaveTimer?.Stop();
-            base.OnFormClosing(e);
-        }
-
-
         private void WriteExpensesSubtotal(StreamWriter writer, CommissioningResource resource, int minDay, int maxDay)
         {
             writer.Write("Subtotals - Expenses,");
@@ -1203,6 +1298,46 @@ private class CellData
             decimal totalDelta = actualTotal - plannedTotal;
 
             writer.WriteLine($"${plannedTotal:F2},${actualTotal:F2},${totalDelta:F2}");
+        }
+
+        // Fix for the OnFormClosing method - correct signature
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            // Save project when closing
+            SaveProject();
+
+            // Close results window if open
+        
+
+            if (_refreshTimer != null)
+            {
+                _refreshTimer.Stop();
+                _refreshTimer.Dispose();
+            }
+
+            base.OnFormClosing(e);
+        }
+
+       
+
+        private void SaveProject()
+        {
+            try
+            {
+                // Apply all pending changes
+                foreach (TextBox textBox in _editableCells.Values)
+                {
+                    // Simulate leaving the cell to apply changes
+                    TextBox_Leave(textBox, EventArgs.Empty);
+                }
+
+                // Save the project
+                CommissioningDataManager.Instance.SaveCurrentProject();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error saving project: {ex.Message}");
+            }
         }
     }
 }

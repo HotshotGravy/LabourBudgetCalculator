@@ -1,89 +1,122 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Windows.Forms;
 using System.Xml.Serialization;
 
-namespace LabourBudgetCalculator
+namespace LabourBudgetCalculator.Helpers
 {
-    public static class CommissioningDataManager
+    public class CommissioningDataManager
     {
-        private static string dataPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "TimeExpenseCalculator");
-        private static string projectsFile = Path.Combine(dataPath, "CommissioningProjects.xml");
-
-        static CommissioningDataManager()
+        private static CommissioningDataManager _instance;
+        public static CommissioningDataManager Instance
         {
-            // Create directory if it doesn't exist
-            if (!Directory.Exists(dataPath))
+            get
             {
-                Directory.CreateDirectory(dataPath);
+                if (_instance == null)
+                    _instance = new CommissioningDataManager();
+                return _instance;
             }
         }
 
-        public static void SaveProjects(List<CommissioningProject> projects)
+        private CommissioningProject _currentProject;
+        public CommissioningProject CurrentProject => _currentProject;
+
+        private string _projectFilePath;
+        private readonly string _projectsDirectory;
+
+        public CommissioningDataManager()
         {
-            try
+            _projectsDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "LabourBudgetCalculator", "Projects");
+
+            // Ensure the directory exists
+            if (!Directory.Exists(_projectsDirectory))
             {
-                XmlSerializer serializer = new XmlSerializer(typeof(List<CommissioningProject>));
-                using (FileStream fs = new FileStream(projectsFile, FileMode.Create))
-                {
-                    serializer.Serialize(fs, projects);
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error saving commissioning projects: {ex.Message}", "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Directory.CreateDirectory(_projectsDirectory);
             }
         }
 
-        public static List<CommissioningProject> LoadProjects()
+        public CommissioningProject LoadProject(string projectId)
         {
-            List<CommissioningProject> projects = new List<CommissioningProject>();
+            _projectFilePath = Path.Combine(_projectsDirectory, $"{projectId}.xml");
 
-            if (File.Exists(projectsFile))
+            if (File.Exists(_projectFilePath))
             {
                 try
                 {
-                    XmlSerializer serializer = new XmlSerializer(typeof(List<CommissioningProject>));
-                    using (FileStream fs = new FileStream(projectsFile, FileMode.Open))
+                    using (var reader = new StreamReader(_projectFilePath))
                     {
-                        projects = (List<CommissioningProject>)serializer.Deserialize(fs);
+                        var serializer = new XmlSerializer(typeof(CommissioningProject));
+                        _currentProject = (CommissioningProject)serializer.Deserialize(reader);
                     }
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Error loading commissioning projects: {ex.Message}", "Error",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    System.Diagnostics.Debug.WriteLine($"Error loading project: {ex.Message}");
+                    _currentProject = new CommissioningProject
+                    {
+                        ProjectID = projectId,
+                        ProjectName = "New Project",
+                        ProjectDate = DateTime.Now
+                    };
                 }
             }
+            else
+            {
+                _currentProject = new CommissioningProject
+                {
+                    ProjectID = projectId,
+                    ProjectName = "New Project",
+                    ProjectDate = DateTime.Now
+                };
+            }
 
-            return projects;
+            return _currentProject;
         }
 
-        public static CommissioningProject GetProjectByID(string projectID)
+        public void SaveCurrentProject()
         {
-            var projects = LoadProjects();
-            return projects.Find(p => p.ProjectID == projectID);
+            if (_currentProject == null)
+                return;
+
+            SaveProject(_currentProject);
         }
 
         public static void SaveProject(CommissioningProject project)
         {
-            var projects = LoadProjects();
-            var existingIndex = projects.FindIndex(p => p.ProjectID == project.ProjectID);
+            if (project == null)
+                return;
 
-            if (existingIndex >= 0)
+            string projectsDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "LabourBudgetCalculator", "Projects");
+
+            if (!Directory.Exists(projectsDirectory))
             {
-                projects[existingIndex] = project;
-            }
-            else
-            {
-                projects.Add(project);
+                Directory.CreateDirectory(projectsDirectory);
             }
 
-            SaveProjects(projects);
+            string filePath = Path.Combine(projectsDirectory, $"{project.ProjectID}.xml");
+
+            try
+            {
+                using (var writer = new StreamWriter(filePath))
+                {
+                    var serializer = new XmlSerializer(typeof(CommissioningProject));
+                    serializer.Serialize(writer, project);
+                }
+
+                // Reset dirty flag after successful save
+                project.IsDirty = false;
+                foreach (var resource in project.Resources)
+                {
+                    resource.IsDirty = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error saving project: {ex.Message}");
+            }
         }
     }
 }

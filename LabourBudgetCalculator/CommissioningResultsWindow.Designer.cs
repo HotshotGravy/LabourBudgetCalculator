@@ -1,4 +1,4 @@
-﻿namespace LabourBudgetCalculator.Forms
+﻿namespace LabourBudgetCalculator
 {
     partial class CommissioningResultsWindow
     {

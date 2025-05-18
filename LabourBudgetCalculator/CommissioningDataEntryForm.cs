@@ -1263,6 +1263,57 @@ namespace LabourBudgetCalculator
             }
         }
 
+        private void ViewResultsButton_Click(object sender, EventArgs e)
+        {
+            // Apply any pending changes
+            ApplyPendingChanges();
+
+            // Check if project exists
+            if (currentProject == null)
+            {
+                MessageBox.Show("No project loaded.", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            // Create and show the results window if not already open
+            if (_resultsWindow == null || _resultsWindow.IsDisposed)
+            {
+                _resultsWindow = new CommissioningResultsWindow(currentProject);
+                _resultsWindow.Show();
+            }
+            else
+            {
+                // If results window already exists, bring it to front
+                _resultsWindow.BringToFront();
+            }
+        }
+
+        private void ApplyPendingChanges()
+        {
+            // Save the current resource being edited
+            if (tabResources.SelectedTab != null)
+            {
+                var resource = tabResources.SelectedTab.Tag as CommissioningResource;
+                if (resource != null)
+                {
+                    UpdateResourceFromUI(resource);
+                }
+            }
+
+            // Make sure all resources have initialized daily data
+            foreach (var resource in currentProject.Resources)
+            {
+                if (resource.DailyData == null || resource.DailyData.Count == 0)
+                {
+                    resource.InitializeFromSchedule();
+                }
+            }
+
+            // Recalculate project totals
+            currentProject.CalculateTotals();
+        }
+
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             // Save project when closing
