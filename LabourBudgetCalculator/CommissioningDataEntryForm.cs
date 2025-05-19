@@ -5,6 +5,7 @@ using System.Linq;
 using System.Windows.Forms;
 using TimeExpenseCalculator.Helpers;
 using TimeExpenseCalculator.Models;
+using LabourBudgetCalculator.Helpers;
 
 namespace LabourBudgetCalculator
 {
@@ -16,6 +17,8 @@ namespace LabourBudgetCalculator
         private Button btnAddResource;
         private Button btnDeleteResource;
         private Timer autoSaveTimer;
+        private Button btnViewResults;
+
 
         private CommissioningResultsWindow _resultsWindow;
         private CommissioningProject _project;
@@ -620,11 +623,11 @@ namespace LabourBudgetCalculator
             }
 
             if (currentTab == null) return;
-
- .Controls.Clear();
-
+        
+            parentPanel.Controls.Clear();
+            
             // Get the current tab page from the resource
-            TabPage currentTab = null;
+            currentTab = null;
             foreach (TabPage tab in tabResources.TabPages)
             {
                 if (tab.Tag == resource)
@@ -1169,13 +1172,96 @@ namespace LabourBudgetCalculator
                 var txtPremiumTravel = FindControlInTab<TextBox>(currentTab, "txtPremiumTravel");
 
                 // Update resource rates
-                if (txtRegularLabour != null) decimal.TryParse(txtRegularLabour.Text, out resource.RegularLabourRate);
-                if (txtOvertimeLabour != null) decimal.TryParse(txtOvertimeLabour.Text, out resource.OvertimeLabourRate);
-                if (txtPremiumLabour != null) decimal.TryParse(txtPremiumLabour.Text, out resource.PremiumLabourRate);
-                if (txtRegularTravel != null) decimal.TryParse(txtRegularTravel.Text, out resource.RegularTravelRate);
-                if (txtOvertimeTravel != null) decimal.TryParse(txtOvertimeTravel.Text, out resource.OvertimeTravelRate);
-                if (txtPremiumTravel != null) decimal.TryParse(txtPremiumTravel.Text, out resource.PremiumTravelRate);
+                // if (txtRegularLabour != null) decimal.TryParse(txtRegularLabour.Text, out resource.RegularLabourRate);
+                // if (txtOvertimeLabour != null) decimal.TryParse(txtOvertimeLabour.Text, out resource.OvertimeLabourRate);
+                // if (txtPremiumLabour != null) decimal.TryParse(txtPremiumLabour.Text, out resource.PremiumLabourRate);
+                //  if (txtRegularTravel != null) decimal.TryParse(txtRegularTravel.Text, out resource.RegularTravelRate);
+                // if (txtOvertimeTravel != null) decimal.TryParse(txtOvertimeTravel.Text, out resource.OvertimeTravelRate);
+                // if (txtPremiumTravel != null) decimal.TryParse(txtPremiumTravel.Text, out resource.PremiumTravelRate);
 
+
+                if (txtRegularLabour != null)
+                {
+                    decimal tempRate;
+                    if (decimal.TryParse(txtRegularLabour.Text, out tempRate))
+                        resource.RegularLabourRate = tempRate;
+                }
+
+                if (txtOvertimeLabour != null)
+                {
+                    decimal tempRate;
+                    if (decimal.TryParse(txtOvertimeLabour.Text, out tempRate))
+                        resource.OvertimeLabourRate = tempRate;
+                }
+
+                if (txtPremiumLabour != null)
+                {
+                    decimal tempRate;
+                    if (decimal.TryParse(txtPremiumLabour.Text, out tempRate))
+                        resource.PremiumLabourRate = tempRate;
+                }
+
+                if (txtRegularTravel != null)
+                {
+                    decimal tempRate;
+                    if (decimal.TryParse(txtRegularTravel.Text, out tempRate))
+                        resource.RegularTravelRate = tempRate;
+                }
+
+                if (txtOvertimeTravel != null)
+                {
+                    decimal tempRate;
+                    if (decimal.TryParse(txtOvertimeTravel.Text, out tempRate))
+                        resource.OvertimeTravelRate = tempRate;
+                }
+
+                if (txtPremiumTravel != null)
+                {
+                    decimal tempRate;
+                    if (decimal.TryParse(txtPremiumTravel.Text, out tempRate))
+                        resource.PremiumTravelRate = tempRate;
+                }
+                if (txtRegularLabour != null)
+                {
+                    decimal tempRate;
+                    if (decimal.TryParse(txtRegularLabour.Text, out tempRate))
+                        resource.RegularLabourRate = tempRate;
+                }
+
+                if (txtOvertimeLabour != null)
+                {
+                    decimal tempRate;
+                    if (decimal.TryParse(txtOvertimeLabour.Text, out tempRate))
+                        resource.OvertimeLabourRate = tempRate;
+                }
+
+                if (txtPremiumLabour != null)
+                {
+                    decimal tempRate;
+                    if (decimal.TryParse(txtPremiumLabour.Text, out tempRate))
+                        resource.PremiumLabourRate = tempRate;
+                }
+
+                if (txtRegularTravel != null)
+                {
+                    decimal tempRate;
+                    if (decimal.TryParse(txtRegularTravel.Text, out tempRate))
+                        resource.RegularTravelRate = tempRate;
+                }
+
+                if (txtOvertimeTravel != null)
+                {
+                    decimal tempRate;
+                    if (decimal.TryParse(txtOvertimeTravel.Text, out tempRate))
+                        resource.OvertimeTravelRate = tempRate;
+                }
+
+                if (txtPremiumTravel != null)
+                {
+                    decimal tempRate;
+                    if (decimal.TryParse(txtPremiumTravel.Text, out tempRate))
+                        resource.PremiumTravelRate = tempRate;
+                }
                 // Days configuration
                 var numDaysOnSite = FindControlInTab<NumericUpDown>(currentTab, "numDaysOnSite");
                 var numHoursPerDay = FindControlInTab<NumericUpDown>(currentTab, "numHoursPerDay");

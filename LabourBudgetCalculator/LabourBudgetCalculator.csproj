@@ -86,7 +86,6 @@
     <Compile Include="CommissioningDataEntryForm.Designer.cs">
       <DependentUpon>CommissioningDataEntryForm.cs</DependentUpon>
     </Compile>
-    <Compile Include="CommissioningDataManager.cs" />
     <Compile Include="CommissioningDay.cs" />
     <Compile Include="CommissioningProject.cs" />
     <Compile Include="CommissioningProjectSelectionForm.cs">
@@ -102,6 +101,7 @@
     <Compile Include="CommissioningResultsWindow.Designer.cs">
       <DependentUpon>CommissioningResultsWindow.cs</DependentUpon>
     </Compile>
+    <Compile Include="Helpers\CommissioningDataManager.cs" />
     <Compile Include="Helpers\DataManager.cs" />
     <Compile Include="MainForm.cs">
       <SubType>Form</SubType>

@@ -5,7 +5,6 @@ using System.Linq;
 using System.Windows.Forms;
 using System.IO;
 using System.Text;
-using LabourBudgetCalculator.Models;
 using LabourBudgetCalculator.Helpers;
 
 namespace LabourBudgetCalculator
@@ -28,7 +27,7 @@ namespace LabourBudgetCalculator
         // Constructor
         public CommissioningResultsWindow(CommissioningProject project)
         {
-           // InitializeComponent();
+            InitializeComponent();
 
             _project = project ?? throw new ArgumentNullException(nameof(project));
 
@@ -51,8 +50,6 @@ namespace LabourBudgetCalculator
             // Initial load
             RefreshDisplay();
         }
-
- 
 
         private void CommissioningResultsWindow_FormClosed(object sender, FormClosedEventArgs e)
         {
@@ -756,7 +753,6 @@ namespace LabourBudgetCalculator
 
                 // Labor hours
                 plannedRegularLabourHours += dayData.PlannedRegularLabourHours;
-                // Labor hours (continued)
                 plannedOvertimeLabourHours += dayData.PlannedOvertimeLabourHours;
                 plannedPremiumLabourHours += dayData.PlannedPremiumLabourHours;
 
@@ -1306,9 +1302,6 @@ namespace LabourBudgetCalculator
             // Save project when closing
             SaveProject();
 
-            // Close results window if open
-        
-
             if (_refreshTimer != null)
             {
                 _refreshTimer.Stop();
@@ -1317,8 +1310,6 @@ namespace LabourBudgetCalculator
 
             base.OnFormClosing(e);
         }
-
-       
 
         private void SaveProject()
         {

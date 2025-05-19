@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Xml.Serialization;
 
@@ -22,12 +23,16 @@ namespace LabourBudgetCalculator.Helpers
 
         private string _projectFilePath;
         private readonly string _projectsDirectory;
+        private static string _projectsListFile;
 
         public CommissioningDataManager()
         {
             _projectsDirectory = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "LabourBudgetCalculator", "Projects");
+
+            // Set the file for the projects list
+            _projectsListFile = Path.Combine(_projectsDirectory, "ProjectsList.xml");
 
             // Ensure the directory exists
             if (!Directory.Exists(_projectsDirectory))
@@ -116,6 +121,72 @@ namespace LabourBudgetCalculator.Helpers
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error saving project: {ex.Message}");
+            }
+        }
+
+        // Method to load all projects
+        public static List<CommissioningProject> LoadProjects()
+        {
+            List<CommissioningProject> projects = new List<CommissioningProject>();
+
+            try
+            {
+                string projectsDirectory = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "LabourBudgetCalculator", "Projects");
+
+                string projectsListFile = Path.Combine(projectsDirectory, "ProjectsList.xml");
+
+                if (File.Exists(projectsListFile))
+                {
+                    XmlSerializer serializer = new XmlSerializer(typeof(List<CommissioningProject>));
+                    using (FileStream fs = new FileStream(projectsListFile, FileMode.Open))
+                    {
+                        projects = (List<CommissioningProject>)serializer.Deserialize(fs);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error loading projects list: {ex.Message}");
+            }
+
+            return projects;
+        }
+
+        // Method to save all projects
+        public static void SaveProjects(List<CommissioningProject> projects)
+        {
+            if (projects == null) return;
+
+            try
+            {
+                string projectsDirectory = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "LabourBudgetCalculator", "Projects");
+
+                if (!Directory.Exists(projectsDirectory))
+                {
+                    Directory.CreateDirectory(projectsDirectory);
+                }
+
+                string projectsListFile = Path.Combine(projectsDirectory, "ProjectsList.xml");
+
+                XmlSerializer serializer = new XmlSerializer(typeof(List<CommissioningProject>));
+                using (FileStream fs = new FileStream(projectsListFile, FileMode.Create))
+                {
+                    serializer.Serialize(fs, projects);
+                }
+
+                // Also save each individual project file
+                foreach (var project in projects)
+                {
+                    SaveProject(project);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error saving projects list: {ex.Message}");
             }
         }
     }
