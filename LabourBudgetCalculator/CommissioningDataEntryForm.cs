@@ -18,10 +18,9 @@ namespace LabourBudgetCalculator
         private Button btnDeleteResource;
         private Timer autoSaveTimer;
         private Button btnViewResults;
-
-
         private CommissioningResultsWindow _resultsWindow;
-        private CommissioningProject _project;
+
+        // private CommissioningProject _project;
 
         private GroupBox groupBoxRates;
         private GroupBox groupBoxDays;
@@ -72,6 +71,15 @@ namespace LabourBudgetCalculator
             btnDeleteResource.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             btnDeleteResource.Click += BtnDeleteResource_Click;
             this.Controls.Add(btnDeleteResource);
+
+            // Add View Results button
+            btnViewResults = new Button();
+            btnViewResults.Text = "View Results";
+            btnViewResults.Size = new Size(100, 30);
+            btnViewResults.Location = new Point(230, 820);
+            btnViewResults.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            btnViewResults.Click += BtnViewResults_Click;
+            this.Controls.Add(btnViewResults);
 
             // If no resources exist, create the first one
             if (currentProject.Resources.Count == 0)
@@ -261,7 +269,6 @@ namespace LabourBudgetCalculator
             });
         }
 
-        // Update the event handlers in CreateDaysSection to regenerate schedule when values change
         private void CreateDaysSection(TabPage tabPage, CommissioningResource resource)
         {
             groupBoxDays = new GroupBox
@@ -378,15 +385,14 @@ namespace LabourBudgetCalculator
             };
 
             groupBoxDays.Controls.AddRange(new Control[] {
-        lblDaysOnSite, numDaysOnSite,
-        lblHoursPerDay, numHoursPerDay,
-        lblStartDay, comboBoxStartDay,
-        lblDefaultStartTime, comboBoxStartTime,
-        lblLunchDuration, comboBoxLunchDuration
-    });
+                lblDaysOnSite, numDaysOnSite,
+                lblHoursPerDay, numHoursPerDay,
+                lblStartDay, comboBoxStartDay,
+                lblDefaultStartTime, comboBoxStartTime,
+                lblLunchDuration, comboBoxLunchDuration
+            });
         }
 
-        // Add this helper method to regenerate the schedule when configuration changes
         private void RegenerateSchedule(TabPage tabPage, CommissioningResource resource)
         {
             var schedulePanel = FindControlInTab<Panel>(tabPage, "panelSchedule");
@@ -579,7 +585,6 @@ namespace LabourBudgetCalculator
             });
         }
 
-
         private void CreateScheduleSection(TabPage tabPage, CommissioningResource resource)
         {
             groupBoxSchedule = new GroupBox
@@ -623,21 +628,8 @@ namespace LabourBudgetCalculator
             }
 
             if (currentTab == null) return;
-        
-            parentPanel.Controls.Clear();
-            
-            // Get the current tab page from the resource
-            currentTab = null;
-            foreach (TabPage tab in tabResources.TabPages)
-            {
-                if (tab.Tag == resource)
-                {
-                    currentTab = tab;
-                    break;
-                }
-            }
 
-            if (currentTab == null) return;
+            parentPanel.Controls.Clear();
 
             // Get configuration values
             var numDaysOnSite = FindControlInTab<NumericUpDown>(currentTab, "numDaysOnSite");
@@ -1171,15 +1163,6 @@ namespace LabourBudgetCalculator
                 var txtOvertimeTravel = FindControlInTab<TextBox>(currentTab, "txtOvertimeTravel");
                 var txtPremiumTravel = FindControlInTab<TextBox>(currentTab, "txtPremiumTravel");
 
-                // Update resource rates
-                // if (txtRegularLabour != null) decimal.TryParse(txtRegularLabour.Text, out resource.RegularLabourRate);
-                // if (txtOvertimeLabour != null) decimal.TryParse(txtOvertimeLabour.Text, out resource.OvertimeLabourRate);
-                // if (txtPremiumLabour != null) decimal.TryParse(txtPremiumLabour.Text, out resource.PremiumLabourRate);
-                //  if (txtRegularTravel != null) decimal.TryParse(txtRegularTravel.Text, out resource.RegularTravelRate);
-                // if (txtOvertimeTravel != null) decimal.TryParse(txtOvertimeTravel.Text, out resource.OvertimeTravelRate);
-                // if (txtPremiumTravel != null) decimal.TryParse(txtPremiumTravel.Text, out resource.PremiumTravelRate);
-
-
                 if (txtRegularLabour != null)
                 {
                     decimal tempRate;
@@ -1221,47 +1204,7 @@ namespace LabourBudgetCalculator
                     if (decimal.TryParse(txtPremiumTravel.Text, out tempRate))
                         resource.PremiumTravelRate = tempRate;
                 }
-                if (txtRegularLabour != null)
-                {
-                    decimal tempRate;
-                    if (decimal.TryParse(txtRegularLabour.Text, out tempRate))
-                        resource.RegularLabourRate = tempRate;
-                }
 
-                if (txtOvertimeLabour != null)
-                {
-                    decimal tempRate;
-                    if (decimal.TryParse(txtOvertimeLabour.Text, out tempRate))
-                        resource.OvertimeLabourRate = tempRate;
-                }
-
-                if (txtPremiumLabour != null)
-                {
-                    decimal tempRate;
-                    if (decimal.TryParse(txtPremiumLabour.Text, out tempRate))
-                        resource.PremiumLabourRate = tempRate;
-                }
-
-                if (txtRegularTravel != null)
-                {
-                    decimal tempRate;
-                    if (decimal.TryParse(txtRegularTravel.Text, out tempRate))
-                        resource.RegularTravelRate = tempRate;
-                }
-
-                if (txtOvertimeTravel != null)
-                {
-                    decimal tempRate;
-                    if (decimal.TryParse(txtOvertimeTravel.Text, out tempRate))
-                        resource.OvertimeTravelRate = tempRate;
-                }
-
-                if (txtPremiumTravel != null)
-                {
-                    decimal tempRate;
-                    if (decimal.TryParse(txtPremiumTravel.Text, out tempRate))
-                        resource.PremiumTravelRate = tempRate;
-                }
                 // Days configuration
                 var numDaysOnSite = FindControlInTab<NumericUpDown>(currentTab, "numDaysOnSite");
                 var numHoursPerDay = FindControlInTab<NumericUpDown>(currentTab, "numHoursPerDay");
@@ -1349,7 +1292,7 @@ namespace LabourBudgetCalculator
             }
         }
 
-        private void ViewResultsButton_Click(object sender, EventArgs e)
+        private void BtnViewResults_Click(object sender, EventArgs e)
         {
             // Apply any pending changes
             ApplyPendingChanges();

@@ -9,15 +9,19 @@ using LabourBudgetCalculator.Helpers;
 
 namespace LabourBudgetCalculator
 {
+
+   
+
     public partial class CommissioningResultsWindow : Form
     {
         // Reference to the project
-        private readonly CommissioningProject _project;
+        private CommissioningProject _project;
 
         // UI Components
         private TableLayoutPanel _summaryPanel;
         private Panel _resourcesContainer;
         private Timer _refreshTimer;
+        private Timer _dataRefreshTimer;
         private Button _saveButton;
         private Button _exportButton;
 
@@ -33,7 +37,7 @@ namespace LabourBudgetCalculator
 
             // Configure form
             this.Text = $"Results - {_project.ProjectName}";
-            this.Size = new Size(1000, 700);
+            this.Size = new Size(1100, 700);
             this.StartPosition = FormStartPosition.CenterScreen;
 
             // Create UI
@@ -47,10 +51,56 @@ namespace LabourBudgetCalculator
             };
             _refreshTimer.Tick += (sender, e) => RefreshDisplay();
 
+            // Set up data refresh timer
+            _dataRefreshTimer = new Timer
+            {
+                Interval = 3000, // Check for updates every 3 seconds
+                Enabled = true
+            };
+            _dataRefreshTimer.Tick += (sender, e) => ReloadProjectData();
+
             // Initial load
             RefreshDisplay();
         }
+        private void ReloadProjectData()
+        {
+            try
+            {
+                // Only reload if we have a valid project
+                if (_project != null && !string.IsNullOrEmpty(_project.ProjectID))
+                {
+                    // Get the current project from the data manager
+                    var currentProject = CommissioningDataManager.Instance.CurrentProject;
 
+                    // If the data manager has the same project ID and it exists
+                    if (currentProject != null && currentProject.ProjectID == _project.ProjectID)
+                    {
+                        // Update our reference to use the current project from the manager
+                        _project = currentProject;
+                        _project.IsDirty = true; // Force a refresh
+                        RefreshDisplay();
+                    }
+                    else
+                    {
+                        // Otherwise, try to load it from disk
+                        var updatedProject = CommissioningDataManager.Instance.LoadProject(_project.ProjectID);
+                        if (updatedProject != null)
+                        {
+                            _project = updatedProject;
+                            _project.IsDirty = true; // Force a refresh
+                            RefreshDisplay();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error reloading project data: {ex.Message}");
+            }
+        }
+
+        // Modify your existing OnFormClosing method
+  
         private void CommissioningResultsWindow_FormClosed(object sender, FormClosedEventArgs e)
         {
             // Stop the timer when form closes
@@ -109,7 +159,8 @@ namespace LabourBudgetCalculator
             _resourcesContainer = new Panel
             {
                 Dock = DockStyle.Fill,
-                AutoScroll = true
+                AutoScroll = true,
+                BorderStyle = BorderStyle.FixedSingle
             };
 
             // 3. Button panel
@@ -148,6 +199,8 @@ namespace LabourBudgetCalculator
                 Margin = new Padding(5)
             };
             closeButton.Click += (sender, e) => this.Close();
+
+
 
             buttonPanel.Controls.Add(_saveButton, 0, 0);
             buttonPanel.Controls.Add(_exportButton, 1, 0);
@@ -283,9 +336,42 @@ namespace LabourBudgetCalculator
             grid.Controls.Add(label, col, row);
         }
 
+       
+        private void EnsureProjectData()
+        {
+            if (_project == null || _project.Resources == null)
+                return;
+
+            // Make sure all resources have daily data
+            foreach (var resource in _project.Resources)
+            {
+                if (resource.DailyData == null || resource.DailyData.Count == 0)
+                {
+                    if (resource.DaysOnSite <= 0)
+                        resource.DaysOnSite = 5; // Default to 5 days
+
+                    resource.InitializeFromSchedule();
+                }
+            }
+        }
+
+
         private void RefreshDisplay()
         {
+            System.Diagnostics.Debug.WriteLine($"RefreshDisplay called - Project: {_project?.ProjectName}, Resources: {_project?.Resources?.Count}");
+            if (_project?.Resources != null)
+            {
+                foreach (var resource in _project.Resources)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Resource: {resource.TechnicianName}, DailyData count: {resource.DailyData?.Count}");
+                }
+            }
+
+            EnsureProjectData();
+
+
             // Recalculate project totals
+
             if (_project.IsDirty)
             {
                 _project.CalculateTotals();
@@ -357,6 +443,22 @@ namespace LabourBudgetCalculator
 
         private void UpdateResourceGrid()
         {
+
+            if (_project == null || _project.Resources == null || _project.Resources.Count == 0)
+            {
+                _resourcesContainer.Controls.Clear();
+
+                var noDataLabel = new Label
+                {
+                    Text = "No resources to display. Add resources in the data entry form.",
+                    Dock = DockStyle.Fill,
+                    TextAlign = ContentAlignment.MiddleCenter,
+                    Font = new Font(Font.FontFamily, 10)
+                };
+
+                _resourcesContainer.Controls.Add(noDataLabel);
+                return;
+            }
             // Store scroll position to restore after rebuild
             Point scrollPosition = _resourcesContainer.AutoScrollPosition;
             scrollPosition = new Point(Math.Abs(scrollPosition.X), Math.Abs(scrollPosition.Y));
@@ -391,10 +493,15 @@ namespace LabourBudgetCalculator
 
             // Add each resource
             foreach (var resource in _project.Resources)
-            {
-                var resourcePanel = CreateResourcePanel(resource, cellValues);
-                resourcesPanel.Controls.Add(resourcePanel);
-            }
+                try
+                {
+                    var resourcePanel = CreateResourcePanel(resource, cellValues);
+                    resourcesPanel.Controls.Add(resourcePanel);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error creating resource panel: {ex.Message}");
+                }
 
             // Add the flow panel to the container
             _resourcesContainer.Controls.Add(resourcesPanel);
@@ -449,6 +556,8 @@ namespace LabourBudgetCalculator
 
         private TableLayoutPanel CreateResourceGrid(CommissioningResource resource, Dictionary<string, string> cellValues)
         {
+            System.Diagnostics.Debug.WriteLine($"Creating grid for {resource.TechnicianName}, DailyData count: {resource.DailyData?.Count}");
+
             // Find the min and max day indices to display
             int minDay = resource.DailyData.Keys.Count > 0 ? resource.DailyData.Keys.Min() : 0;
             int maxDay = resource.DailyData.Keys.Count > 0 ? resource.DailyData.Keys.Max() : 6;
