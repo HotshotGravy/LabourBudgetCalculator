@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Xml.Serialization;
+using System.Linq;
 
 namespace LabourBudgetCalculator
 {
@@ -9,104 +10,73 @@ namespace LabourBudgetCalculator
     {
         public string ProjectID { get; set; }
         public string ProjectName { get; set; }
-        public decimal InitialEstimate { get; set; }
-        public DateTime CreatedDate { get; set; }
-        public string ProjectNumber { get; set; }
-        public string ClientName { get; set; }
-        public string SiteLocation { get; set; }
         public DateTime ProjectDate { get; set; }
-
-        // Additional properties needed for CommissioningResultsWindow
-        public decimal PlannedTotal { get; set; }
-        public decimal CurrentTotal { get; set; }
-        public decimal ForecastTotal { get; set; }
-        public bool IsDirty { get; set; } = true;
-
+        public string ClientName { get; set; }
+        public string ProjectDescription { get; set; }
+        public decimal InitialEstimate { get; set; }
         public List<CommissioningResource> Resources { get; set; }
+
+        [XmlIgnore]
+        public bool IsDirty { get; set; }
+
+        [XmlIgnore]
+        public decimal PlannedTotal { get; private set; }
+
+        [XmlIgnore]
+        public decimal CurrentTotal { get; private set; }
+
+        [XmlIgnore]
+        public decimal ForecastTotal { get; private set; }
 
         public CommissioningProject()
         {
+            ProjectID = Guid.NewGuid().ToString();
+            ProjectName = "New Project";
+            ProjectDate = DateTime.Today;
             Resources = new List<CommissioningResource>();
+            IsDirty = true;
         }
 
+        /// <summary>
+        /// Calculates the project totals by summing all resource totals
+        /// </summary>
         public void CalculateTotals()
         {
-            decimal plannedTotal = 0;
-            decimal currentTotal = 0;
-            decimal forecastTotal = 0;
-
-            foreach (var resource in Resources)
+            try
             {
-                decimal resourcePlanned = 0;
-                decimal resourceCurrent = 0;
-                decimal resourceForecast = 0;
+                PlannedTotal = 0;
+                CurrentTotal = 0;
+                ForecastTotal = 0;
 
-                foreach (var entry in resource.DailyData)
+                if (Resources == null || !Resources.Any())
                 {
-                    var dayData = entry.Value;
-
-                    // Calculate labor costs
-                    decimal plannedLabor =
-                        (dayData.PlannedRegularLabourHours * resource.RegularLabourRate) +
-                        (dayData.PlannedOvertimeLabourHours * resource.OvertimeLabourRate) +
-                        (dayData.PlannedPremiumLabourHours * resource.PremiumLabourRate);
-
-                    decimal actualLabor =
-                        (dayData.ActualRegularLabourHours * resource.RegularLabourRate) +
-                        (dayData.ActualOvertimeLabourHours * resource.OvertimeLabourRate) +
-                        (dayData.ActualPremiumLabourHours * resource.PremiumLabourRate);
-
-                    // Calculate travel costs
-                    decimal plannedTravel =
-                        (dayData.PlannedRegularTravelHours * resource.RegularTravelRate) +
-                        (dayData.PlannedOvertimeTravelHours * resource.OvertimeTravelRate) +
-                        (dayData.PlannedPremiumTravelHours * resource.PremiumTravelRate);
-
-                    decimal actualTravel =
-                        (dayData.ActualRegularTravelHours * resource.RegularTravelRate) +
-                        (dayData.ActualOvertimeTravelHours * resource.OvertimeTravelRate) +
-                        (dayData.ActualPremiumTravelHours * resource.PremiumTravelRate);
-
-                    // Calculate expense costs
-                    decimal plannedExpenses =
-                        dayData.PlannedMileageCost +
-                        dayData.PlannedPerDiemCost +
-                        dayData.PlannedFlightCost +
-                        dayData.PlannedRentalCarCost +
-                        dayData.PlannedHotelCost;
-
-                    decimal actualExpenses =
-                        dayData.ActualMileageCost +
-                        dayData.ActualPerDiemCost +
-                        dayData.ActualFlightCost +
-                        dayData.ActualRentalCarCost +
-                        dayData.ActualHotelCost;
-
-                    // Add to resource totals
-                    resourcePlanned += plannedLabor + plannedTravel + plannedExpenses;
-                    resourceCurrent += actualLabor + actualTravel + actualExpenses;
-
-                    // For forecast, use actual if available, otherwise use planned
-                    decimal forecastLabor = (actualLabor > 0) ? actualLabor : plannedLabor;
-                    decimal forecastTravel = (actualTravel > 0) ? actualTravel : plannedTravel;
-                    decimal forecastExpenses = (actualExpenses > 0) ? actualExpenses : plannedExpenses;
-
-                    resourceForecast += forecastLabor + forecastTravel + forecastExpenses;
+                    return;
                 }
 
-                // Add to project totals
-                plannedTotal += resourcePlanned;
-                currentTotal += resourceCurrent;
-                forecastTotal += resourceForecast;
+                foreach (var resource in Resources)
+                {
+                    // Ensure resource has valid daily data
+                    if (resource.DailyData == null || !resource.DailyData.Any() || resource.IsDirty)
+                    {
+                        resource.InitializeFromSchedule();
+                    }
+
+                    // Calculate resource totals
+                    resource.CalculateResourceTotals();
+
+                    // Add to project totals
+                    PlannedTotal += resource.PlannedResourceTotal;
+                    CurrentTotal += resource.ActualResourceTotal;
+                    ForecastTotal += resource.ForecastResourceTotal;
+                }
+
+                IsDirty = false;
             }
-
-            // Update project properties
-            PlannedTotal = plannedTotal;
-            CurrentTotal = currentTotal;
-            ForecastTotal = forecastTotal;
-
-            // Reset dirty flag
-            IsDirty = false;
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error in CalculateTotals for project {ProjectName}: {ex.Message}");
+                IsDirty = true;
+            }
         }
     }
 }
