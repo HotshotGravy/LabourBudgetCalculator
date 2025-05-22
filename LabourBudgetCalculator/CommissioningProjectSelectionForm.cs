@@ -12,7 +12,7 @@ namespace LabourBudgetCalculator
         private ComboBox cboProjects;
         private TextBox txtNewProjectID;
         private TextBox txtNewProjectName;
-        private NumericUpDown nudEstimateAmount;
+        private TextBox txtEstimateAmount;
         private Button btnOpenProject;
         private Button btnCreateProject;
         private Button btnBack;
@@ -93,7 +93,7 @@ namespace LabourBudgetCalculator
 
             // Panel for new project
             pnlNewProject = new Panel();
-            pnlNewProject.Size = new Size(550, 150);
+            pnlNewProject.Size = new Size(550, 140);
             pnlNewProject.Location = new Point(25, 210);
             pnlNewProject.BorderStyle = BorderStyle.FixedSingle;
             this.Controls.Add(pnlNewProject);
@@ -101,22 +101,14 @@ namespace LabourBudgetCalculator
             // New project ID
             lblNewProjectID = new Label();
             lblNewProjectID.Text = "New Project ID:";
-            lblNewProjectID.Location = new Point(10, 10);
+            lblNewProjectID.Location = new Point(10, 15);
             lblNewProjectID.AutoSize = true;
             pnlNewProject.Controls.Add(lblNewProjectID);
 
             txtNewProjectID = new TextBox();
             txtNewProjectID.Size = new Size(150, 25);
-            txtNewProjectID.Location = new Point(120, 8);
+            txtNewProjectID.Location = new Point(140, 13);
             pnlNewProject.Controls.Add(txtNewProjectID);
-
-            // Generate ID button
-            Button btnGenerateID = new Button();
-            btnGenerateID.Text = "Generate ID";
-            btnGenerateID.Size = new Size(100, 23);
-            btnGenerateID.Location = new Point(280, 8);
-            btnGenerateID.Click += (s, e) => { txtNewProjectID.Text = Guid.NewGuid().ToString().Substring(0, 8); };
-            pnlNewProject.Controls.Add(btnGenerateID);
 
             // New project name
             lblNewProjectName = new Label();
@@ -126,31 +118,28 @@ namespace LabourBudgetCalculator
             pnlNewProject.Controls.Add(lblNewProjectName);
 
             txtNewProjectName = new TextBox();
-            txtNewProjectName.Size = new Size(400, 25);
-            txtNewProjectName.Location = new Point(120, 43);
+            txtNewProjectName.Size = new Size(380, 25);
+            txtNewProjectName.Location = new Point(140, 43);
             pnlNewProject.Controls.Add(txtNewProjectName);
 
             // Estimate amount
             lblEstimateAmount = new Label();
             lblEstimateAmount.Text = "Initial Estimate ($):";
-            lblEstimateAmount.Location = new Point(10, 80);
+            lblEstimateAmount.Location = new Point(10, 75);
             lblEstimateAmount.AutoSize = true;
             pnlNewProject.Controls.Add(lblEstimateAmount);
 
-            nudEstimateAmount = new NumericUpDown();
-            nudEstimateAmount.Size = new Size(150, 25);
-            nudEstimateAmount.Location = new Point(120, 78);
-            nudEstimateAmount.Minimum = 0;
-            nudEstimateAmount.Maximum = 999999999;
-            nudEstimateAmount.DecimalPlaces = 2;
-            nudEstimateAmount.ThousandsSeparator = true;
-            pnlNewProject.Controls.Add(nudEstimateAmount);
+            txtEstimateAmount = new TextBox();
+            txtEstimateAmount.Size = new Size(150, 25);
+            txtEstimateAmount.Location = new Point(140, 73);
+            txtEstimateAmount.Text = "";
+            pnlNewProject.Controls.Add(txtEstimateAmount);
 
             // Create project button
             btnCreateProject = new Button();
             btnCreateProject.Text = "Create Project";
             btnCreateProject.Size = new Size(120, 25);
-            btnCreateProject.Location = new Point(10, 115);
+            btnCreateProject.Location = new Point(10, 105);
             btnCreateProject.Click += BtnCreateProject_Click;
             pnlNewProject.Controls.Add(btnCreateProject);
 
@@ -158,7 +147,7 @@ namespace LabourBudgetCalculator
             btnBack = new Button();
             btnBack.Text = "Back";
             btnBack.Size = new Size(80, 30);
-            btnBack.Location = new Point(25, 365);
+            btnBack.Location = new Point(25, 360);
             btnBack.Click += BtnBack_Click;
             this.Controls.Add(btnBack);
         }
@@ -198,12 +187,6 @@ namespace LabourBudgetCalculator
                         btnOpenProject.Enabled = true;
                         btnDeleteProject.Enabled = true;
                     }
-                }
-
-                // Generate a default project ID for new projects
-                if (string.IsNullOrEmpty(txtNewProjectID.Text))
-                {
-                    txtNewProjectID.Text = Guid.NewGuid().ToString().Substring(0, 8);
                 }
             }
             catch (Exception ex)
@@ -354,12 +337,21 @@ namespace LabourBudgetCalculator
                     return;
                 }
 
+                // Parse the initial estimate from the text box
+                decimal initialEstimate = 0;
+                if (!decimal.TryParse(txtEstimateAmount.Text, out initialEstimate))
+                {
+                    MessageBox.Show("Please enter a valid number for the Initial Estimate.", "Invalid Amount",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
                 // Create new project with the improved structure
                 var newProject = new CommissioningProject
                 {
                     ProjectID = projectId,
                     ProjectName = txtNewProjectName.Text.Trim(),
-                    InitialEstimate = nudEstimateAmount.Value,
+                    InitialEstimate = initialEstimate,
                     ProjectDate = DateTime.Now,
                     Resources = new List<CommissioningResource>()
                 };

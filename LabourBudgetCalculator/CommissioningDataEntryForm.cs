@@ -215,9 +215,29 @@ namespace LabourBudgetCalculator
             g.Controls.AddRange(new Control[] { new Label { Text = "Flight Cost (Total Round Trip):", Location = new Point(15, 25), AutoSize = true }, nFC, cRCR, nRCR, new Label { Text = "per day", Location = new Point(285, 55), AutoSize = true }, cHR, nHR, new Label { Text = "per night", Location = new Point(285, 85), AutoSize = true }, new Label { Text = "Mileage Rate (Override):", Location = new Point(15, 115), AutoSize = true }, nMR, new Label { Text = "per mile/km", Location = new Point(285, 115), AutoSize = true }, new Label { Text = "Per Diem Rate (Override):", Location = new Point(15, 145), AutoSize = true }, nPDR, new Label { Text = "per day", Location = new Point(285, 145), AutoSize = true }, new Label { Text = "Other Fixed Expenses:", Location = new Point(15, 175), AutoSize = true }, nOE });
         }
         private void CreateScheduleSection(TabPage tabPage, CommissioningResource resource)
-        { /* ... same as corrected_csharp_code_v6 ... */
-            var gS = new GroupBox { Name = "groupBoxSchedule", Text = "Daily Schedule Plan", Location = new Point(440, 200), Size = new Size(Math.Max(500, tabPage.ClientSize.Width - 450 - SystemInformation.VerticalScrollBarWidth), Math.Max(460, tabPage.ClientSize.Height - 210 - SystemInformation.HorizontalScrollBarHeight)), Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right }; tabPage.Controls.Add(gS);
-            var pS = new Panel { Name = "panelSchedule", Location = new Point(10, 20), Size = new Size(gS.ClientSize.Width - 20, gS.ClientSize.Height - 30), Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right, AutoScroll = true, BorderStyle = BorderStyle.Fixed3D }; gS.Controls.Add(pS); GenerateCalendarLayout(pS, resource);
+        {
+            var gS = new GroupBox
+            {
+                Name = "groupBoxSchedule",
+                Text = "Daily Schedule Plan",
+                Location = new Point(440, 200),
+                Size = new Size(750, Math.Max(460, tabPage.ClientSize.Height - 210 - SystemInformation.HorizontalScrollBarHeight)),
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
+            };
+            tabPage.Controls.Add(gS);
+
+            var pS = new Panel
+            {
+                Name = "panelSchedule",
+                Location = new Point(10, 20),
+                Size = new Size(gS.ClientSize.Width - 20, gS.ClientSize.Height - 30),
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+                AutoScroll = true,
+                BorderStyle = BorderStyle.Fixed3D
+            };
+            gS.Controls.Add(pS);
+
+            GenerateCalendarLayout(pS, resource);
         }
 
         private void CreateResourceInfoSection(TabPage tabPage, CommissioningResource resource)
@@ -285,12 +305,12 @@ namespace LabourBudgetCalculator
             if (totalWeeksToDisplay == 0 && orderedDailyDataEntries.Any()) totalWeeksToDisplay = 1;
 
             int availableWidth = parentPanel.ClientSize.Width - (parentPanel.VerticalScroll.Visible ? SystemInformation.VerticalScrollBarWidth : 0) - 5;
-            int margin = 2, dayBoxWidth = Math.Max(140, (availableWidth - (6 * margin)) / 7), dayBoxHeight = 105, weekHeaderHeight = 25, currentY = margin;
+            int margin = 3, dayBoxWidth = 105, dayBoxHeight = 105, weekHeaderHeight = 25, currentY = margin;
 
             for (int weekNum = 0; weekNum < totalWeeksToDisplay; weekNum++)
             {
                 DateTime currentWeekSunday = firstCalendarDisplaySunday.AddDays(weekNum * 7);
-                Label lblWeek = new Label { Text = $"Week of {currentWeekSunday:MMM dd, yyyy}", Location = new Point(margin, currentY), Font = new Font(this.Font.FontFamily, 9, FontStyle.Bold), AutoSize = true }; // Changed yyyy format
+                Label lblWeek = new Label { Text = $"Week of {currentWeekSunday:MMM dd, yyyy}", Location = new Point(margin, currentY), Font = new Font(this.Font.FontFamily, 9, FontStyle.Bold), AutoSize = true };
                 parentPanel.Controls.Add(lblWeek); currentY += weekHeaderHeight;
                 FlowLayoutPanel weekDaysPanel = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, Location = new Point(margin, currentY), Size = new Size(availableWidth, dayBoxHeight + margin), WrapContents = false };
 
@@ -307,7 +327,6 @@ namespace LabourBudgetCalculator
                         if (!kvp.Equals(default(KeyValuePair<int, ResourceDayData>))) // Check if kvp was found
                             dayKeyForBox = kvp.Key;
                     }
-
 
                     Panel dayBox = new Panel { Name = $"dayBox_{calendarDateForBox:yyyyMMdd}", Size = new Size(dayBoxWidth, dayBoxHeight), BorderStyle = BorderStyle.FixedSingle, Tag = calendarDateForBox, Margin = new Padding(0, 0, margin, margin) };
                     Label lblDateOnly = new Label { Text = $"{calendarDateForBox:ddd, MMM dd}", Location = new Point(3, 3), AutoSize = true }; dayBox.Controls.Add(lblDateOnly);
@@ -327,22 +346,22 @@ namespace LabourBudgetCalculator
 
         private void CreateDayContent_Planning(Panel dayBox, int dayKey, ResourceDayData dayDataEntry, CommissioningResource resource)
         {
-            int yPos = 28; int xLabel = 5; int xControl = 75; int controlWidth = dayBox.ClientSize.Width - xControl - 10; // Adjusted xControl
+            int yPos = 28; int xLabel = 5; int xControl = 35; int controlWidth = dayBox.ClientSize.Width - xControl - 5;
 
-            Label lblPlannedStart = new Label { Text = "Plan Start:", Location = new Point(xLabel, yPos), AutoSize = true };
-            ComboBox comboPlannedStart = new ComboBox { Name = $"comboPlannedStart_{dayKey}", Location = new Point(xControl, yPos - 2), Size = new Size(Math.Max(70, controlWidth), 21), DropDownStyle = ComboBoxStyle.DropDownList, Tag = dayDataEntry };
+            Label lblPlannedStart = new Label { Text = "Start:", Location = new Point(xLabel, yPos), Size = new Size(25, 12), Font = new Font(this.Font.FontFamily, 7) };
+            ComboBox comboPlannedStart = new ComboBox { Name = $"comboPlannedStart_{dayKey}", Location = new Point(xControl, yPos - 2), Size = new Size(Math.Max(65, controlWidth), 21), DropDownStyle = ComboBoxStyle.DropDownList, Tag = dayDataEntry, Font = new Font(this.Font.FontFamily, 7) };
             PopulateTime12HourCombo(comboPlannedStart);
             comboPlannedStart.SelectedItem = ConvertTo12Hour(dayDataEntry.PlannedStartTime);
             comboPlannedStart.SelectedIndexChanged += (s, e) => DailySchedulePlanned_Changed(s, e, resource, dayKey);
-            yPos += 25;
+            yPos += 23;
 
-            Label lblPlannedHours = new Label { Text = "Plan Hours:", Location = new Point(xLabel, yPos), AutoSize = true };
-            NumericUpDown numPlannedHours = new NumericUpDown { Name = $"numPlannedHours_{dayKey}", Location = new Point(xControl, yPos - 2), Size = new Size(Math.Max(60, controlWidth - 10), 20), Minimum = 0, Maximum = 24, DecimalPlaces = 1, Increment = 0.5m, Value = dayDataEntry.GetPlannedLabourHoursTotal(), Tag = dayDataEntry };
+            Label lblPlannedHours = new Label { Text = "Hours:", Location = new Point(xLabel, yPos), AutoSize = true, Font = new Font(this.Font.FontFamily, 7) };
+            NumericUpDown numPlannedHours = new NumericUpDown { Name = $"numPlannedHours_{dayKey}", Location = new Point(45, yPos - 2), Size = new Size(50, 18), Minimum = 0, Maximum = 24, DecimalPlaces = 1, Increment = 0.5m, Value = dayDataEntry.GetPlannedLabourHoursTotal(), Tag = dayDataEntry, Font = new Font(this.Font.FontFamily, 7) };
             numPlannedHours.ValueChanged += (s, e) => DailySchedulePlanned_Changed(s, e, resource, dayKey);
-            yPos += 25;
+            yPos += 23;
 
-            Label lblPlannedTravel = new Label { Text = "Plan Travel:", Location = new Point(xLabel, yPos), AutoSize = true };
-            NumericUpDown numPlannedTravel = new NumericUpDown { Name = $"numPlannedTravel_{dayKey}", Location = new Point(xControl, yPos - 2), Size = new Size(Math.Max(60, controlWidth - 10), 20), Minimum = 0, Maximum = 24, DecimalPlaces = 1, Increment = 0.5m, Value = dayDataEntry.GetPlannedTravelHoursTotal(), Tag = dayDataEntry };
+            Label lblPlannedTravel = new Label { Text = "Travel:", Location = new Point(xLabel, yPos), AutoSize = true, Font = new Font(this.Font.FontFamily, 7) };
+            NumericUpDown numPlannedTravel = new NumericUpDown { Name = $"numPlannedTravel_{dayKey}", Location = new Point(45, yPos - 2), Size = new Size(50, 18), Minimum = 0, Maximum = 24, DecimalPlaces = 1, Increment = 0.5m, Value = dayDataEntry.GetPlannedTravelHoursTotal(), Tag = dayDataEntry, Font = new Font(this.Font.FontFamily, 7) };
             numPlannedTravel.ValueChanged += (s, e) => DailySchedulePlanned_Changed(s, e, resource, dayKey);
 
             dayBox.Controls.AddRange(new Control[] { lblPlannedStart, comboPlannedStart, lblPlannedHours, numPlannedHours, lblPlannedTravel, numPlannedTravel });
