@@ -14,357 +14,1045 @@ namespace LabourBudgetCalculator
     {
         private CommissioningProject _project;
         private TableLayoutPanel _summaryPanel;
-        private Panel _resourcesContainer;
-        private Timer _refreshTimer;
+        private Panel _mainPanel;
         private Button _exportButton;
-        private Dictionary<string, Control> _actualInputControls = new Dictionary<string, Control>();
-
-        private enum ActualInputType { ActualStartTime, ActualTotalHoursWorked, ActualTotalTravelHours, PerDiemCost, HotelCost, MileageCost, FlightCost, RentalCarCost }
-        private class ActualInputTag { public CommissioningResource Resource { get; set; } public int DayKey { get; set; } public ResourceDayData DayDataEntry { get; set; } public ActualInputType InputType { get; set; } public bool IsCost { get; set; } }
-
+        private Button _closeButton;
+        private List<ResourcePanel> _resourcePanels = new List<ResourcePanel>();
+        private bool _isClosing = false;
 
         public CommissioningResultsWindow(CommissioningProject project)
         {
             InitializeComponent();
-
             _project = project ?? throw new ArgumentNullException(nameof(project));
-            System.Diagnostics.Debug.WriteLine($"ResultsWindow Initializing with Project: '{_project.ProjectName}', Resources: {_project.Resources?.Count ?? 0}, IsDirty: {_project.IsDirty}");
 
-            if (_project.IsDirty)
-            {
-                System.Diagnostics.Debug.WriteLine("Project is dirty, calculating totals initially.");
-                _project.CalculateTotals(); // This calls resource.CalculateResourceTotals -> which calls resource.InitializeFromSchedule if dailydata is empty
-                // _project.IsDirty = false; // Let RefreshUIDataFromServer handle this after display update
-            }
-
-            this.Text = $"Results - {_project.ProjectName}";
-            this.Size = new Size(1300, 800);
+            this.Text = string.Format("Results - {0}", _project.ProjectName);
+            this.Size = new Size(1400, 800);
             this.StartPosition = FormStartPosition.CenterScreen;
-            this.MinimumSize = new Size(900, 600);
+            this.MinimumSize = new Size(1200, 600);
 
-            SetupUI();
-
-            _refreshTimer = new Timer { Interval = 5000 }; // Increased interval
-            _refreshTimer.Tick += (sender, e) => RefreshUIDataFromServer();
-            // _refreshTimer.Start();
-
-            RefreshUIDataFromServer();
+            // Delay initialization to avoid antivirus triggers
+            this.Load += (s, e) =>
+            {
+                SetupUI();
+                RefreshData();
+            };
         }
 
-        public void UpdateResults(CommissioningProject project) // Called by DataEntryForm
+        private void SetupUI()
         {
-            System.Diagnostics.Debug.WriteLine("ResultsWindow.UpdateResults called.");
-            _project = project;
-            if (_project != null) _project.IsDirty = true;
-            RefreshUIDataFromServer(); // Fetch latest from manager & refresh
-        }
-
-        private void RefreshUIDataFromServer()
-        {
-            System.Diagnostics.Debug.WriteLine("ResultsWindow: Attempting RefreshUIDataFromServer.");
             try
             {
-                if (_project != null && !string.IsNullOrEmpty(_project.ProjectID))
+                this.SuspendLayout();
+
+                // Main container - create statically
+                var mainContainer = new TableLayoutPanel();
+                mainContainer.Dock = DockStyle.Fill;
+                mainContainer.RowCount = 3;
+                mainContainer.ColumnCount = 1;
+                mainContainer.Padding = new Padding(10);
+
+                // Configure rows
+                mainContainer.RowStyles.Clear();
+                mainContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 80));
+                mainContainer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+                mainContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+
+                // Create panels
+                _summaryPanel = CreateSummaryPanel();
+                mainContainer.Controls.Add(_summaryPanel, 0, 0);
+
+                _mainPanel = new Panel();
+                _mainPanel.Dock = DockStyle.Fill;
+                _mainPanel.AutoScroll = true;
+                _mainPanel.BorderStyle = BorderStyle.FixedSingle;
+                mainContainer.Controls.Add(_mainPanel, 0, 1);
+
+                var buttonPanel = CreateButtonPanel();
+                mainContainer.Controls.Add(buttonPanel, 0, 2);
+
+                this.Controls.Add(mainContainer);
+                this.ResumeLayout(false);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error setting up UI: " + ex.Message);
+            }
+        }
+
+        private TableLayoutPanel CreateSummaryPanel()
+        {
+            var panel = new TableLayoutPanel();
+            panel.Dock = DockStyle.Fill;
+            panel.RowCount = 2;
+            panel.ColumnCount = 5;
+            panel.CellBorderStyle = TableLayoutPanelCellBorderStyle.Single;
+
+            // Configure columns
+            panel.ColumnStyles.Clear();
+            for (int i = 0; i < 5; i++)
+                panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20));
+
+            // Add headers
+            string[] headers = { "Quoted", "Planned", "Current", "Forecast", "Delta (vs Quoted)" };
+            for (int i = 0; i < headers.Length; i++)
+            {
+                var label = new Label();
+                label.Text = headers[i];
+                label.TextAlign = ContentAlignment.MiddleCenter;
+                label.Dock = DockStyle.Fill;
+                label.Font = new Font(this.Font, FontStyle.Bold);
+                label.BackColor = SystemColors.ControlLight;
+                panel.Controls.Add(label, i, 0);
+            }
+
+            // Add value labels
+            string[] names = { "lblQuoted", "lblPlanned", "lblCurrent", "lblForecast", "lblDelta" };
+            for (int i = 0; i < names.Length; i++)
+            {
+                var label = new Label();
+                label.Name = names[i];
+                label.Text = "$0.00";
+                label.TextAlign = ContentAlignment.MiddleCenter;
+                label.Dock = DockStyle.Fill;
+                label.Font = new Font(this.Font.FontFamily, 12, FontStyle.Bold);
+                panel.Controls.Add(label, i, 1);
+            }
+
+            return panel;
+        }
+
+        private Panel CreateButtonPanel()
+        {
+            var panel = new Panel();
+            panel.Dock = DockStyle.Fill;
+            panel.Padding = new Padding(5);
+
+            _exportButton = new Button();
+            _exportButton.Text = "Export Details (CSV)";
+            _exportButton.Size = new Size(150, 30);
+            _exportButton.Location = new Point(10, 10);
+            _exportButton.Click += ExportButton_Click;
+
+            _closeButton = new Button();
+            _closeButton.Text = "Close";
+            _closeButton.Size = new Size(100, 30);
+            _closeButton.Location = new Point(170, 10);
+            _closeButton.Click += CloseButton_Click;
+
+            panel.Controls.Add(_exportButton);
+            panel.Controls.Add(_closeButton);
+
+            return panel;
+        }
+
+        private void CloseButton_Click(object sender, EventArgs e)
+        {
+            this.Close();
+        }
+
+        private void RefreshData()
+        {
+            if (_project == null || _isClosing) return;
+
+            try
+            {
+                EnsureResourcesInitialized();
+                _project.CalculateTotals();
+                UpdateSummaryPanel();
+
+                _mainPanel.SuspendLayout();
+                _mainPanel.Controls.Clear();
+                _resourcePanels.Clear();
+
+                int yPos = 10;
+                foreach (var resource in _project.Resources)
                 {
-                    CommissioningProject projectFromManager = CommissioningDataManager.Instance.GetProjectById(_project.ProjectID);
-                    if (projectFromManager != null)
-                    {
-                        _project = projectFromManager;
-                        System.Diagnostics.Debug.WriteLine($"ResultsWindow: Project '{_project.ProjectName}' (ID: {_project.ProjectID}) synchronized. IsDirty: {_project.IsDirty}, Resources: {_project.Resources?.Count ?? 0}");
-                        if (_project.IsDirty)
-                        {
-                            _project.CalculateTotals();
-                            _project.IsDirty = false;
-                        }
-                        UpdateUIDisplay();
-                    }
-                    else
-                    {
-                        System.Diagnostics.Debug.WriteLine($"ResultsWindow: Project with ID '{_project.ProjectID}' NOT FOUND by DataManager.");
-                    }
+                    var resourcePanel = new ResourcePanel(resource, this);
+                    resourcePanel.Location = new Point(10, yPos);
+                    resourcePanel.Width = _mainPanel.ClientSize.Width - 40;
+                    resourcePanel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+
+                    _mainPanel.Controls.Add(resourcePanel);
+                    _resourcePanels.Add(resourcePanel);
+
+                    yPos += resourcePanel.Height + 10;
                 }
-                else
+
+                _mainPanel.ResumeLayout();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("RefreshData error: " + ex.Message);
+            }
+        }
+
+        private void EnsureResourcesInitialized()
+        {
+            if (_project?.Resources == null) return;
+
+            foreach (var resource in _project.Resources)
+            {
+                if (resource.DailyData == null || !resource.DailyData.Any() || resource.IsDirty)
                 {
-                    System.Diagnostics.Debug.WriteLine("ResultsWindow: _project is null or ProjectID is empty. Cannot refresh from server.");
+                    resource.InitializeFromSchedule();
+                }
+            }
+        }
+
+        private void UpdateSummaryPanel()
+        {
+            if (_project == null || _summaryPanel == null) return;
+
+            try
+            {
+                var lblQuoted = _summaryPanel.Controls["lblQuoted"] as Label;
+                var lblPlanned = _summaryPanel.Controls["lblPlanned"] as Label;
+                var lblCurrent = _summaryPanel.Controls["lblCurrent"] as Label;
+                var lblForecast = _summaryPanel.Controls["lblForecast"] as Label;
+                var lblDelta = _summaryPanel.Controls["lblDelta"] as Label;
+
+                if (lblQuoted != null) lblQuoted.Text = FormatCurrency(_project.InitialEstimate);
+                if (lblPlanned != null) lblPlanned.Text = FormatCurrency(_project.PlannedTotal);
+                if (lblCurrent != null) lblCurrent.Text = FormatCurrency(_project.CurrentTotal);
+                if (lblForecast != null) lblForecast.Text = FormatCurrency(_project.ForecastTotal);
+
+                if (lblDelta != null)
+                {
+                    decimal delta = _project.ForecastTotal - _project.InitialEstimate;
+                    lblDelta.Text = FormatCurrency(delta);
+                    lblDelta.ForeColor = delta == 0 ? Color.Black : (delta > 0 ? Color.Red : Color.Green);
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error in RefreshUIDataFromServer: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine("UpdateSummaryPanel error: " + ex.Message);
             }
         }
 
-        private void RefreshLocalUIData()
+        private string FormatCurrency(decimal value)
         {
-            if (this.IsDisposed || _project == null) return;
-            System.Diagnostics.Debug.WriteLine("ResultsWindow: Attempting RefreshLocalUIData.");
-            if (_project.IsDirty)
+            return value.ToString("C2");
+        }
+
+        internal void SaveData()
+        {
+            if (_isClosing) return;
+
+            try
             {
                 _project.CalculateTotals();
-                _project.IsDirty = false;
+                CommissioningDataManager.Instance.SaveCurrentProject();
             }
-            UpdateUIDisplay();
-        }
-
-        private void UpdateUIDisplay()
-        {
-            if (this.IsDisposed || _project == null) return;
-            System.Diagnostics.Debug.WriteLine("ResultsWindow: Updating UI Display.");
-            EnsureProjectResourcesHaveInitializedDailyData();
-            UpdateSummaryPanel();
-            UpdateResourceGrid();
-            System.Diagnostics.Debug.WriteLine("ResultsWindow: UI Display Update Complete.");
-        }
-
-        private void SetupUI()
-        { /* ... Same as commissioning_results_window_v6_error_fixes ... */
-            this.SuspendLayout();
-            var mainContainer = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 3, ColumnCount = 1, Padding = new Padding(10) }; mainContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 70)); mainContainer.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); mainContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
-            _summaryPanel = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, ColumnCount = 5, CellBorderStyle = TableLayoutPanelCellBorderStyle.Single, Margin = new Padding(0, 0, 0, 10) }; for (int i = 0; i < 5; i++) _summaryPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20)); AddHeaderCell(_summaryPanel, "Quoted", 0, 0); AddHeaderCell(_summaryPanel, "Planned", 0, 1); AddHeaderCell(_summaryPanel, "Actual", 0, 2); AddHeaderCell(_summaryPanel, "Forecast", 0, 3); AddHeaderCell(_summaryPanel, "Delta (vs Quoted)", 0, 4); for (int i = 0; i < 5; i++) AddValueCell(_summaryPanel, "$0.00", 1, i); mainContainer.Controls.Add(_summaryPanel, 0, 0);
-            _resourcesContainer = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BorderStyle = BorderStyle.FixedSingle }; mainContainer.Controls.Add(_resourcesContainer, 0, 1);
-            var btnPanel = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = new Padding(0, 10, 0, 0) }; btnPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50)); btnPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            _exportButton = new Button { Text = "Export Details (CSV)", Dock = DockStyle.Fill, Margin = new Padding(5) }; _exportButton.Click += ExportButton_Click; btnPanel.Controls.Add(_exportButton, 0, 0);
-            var closeBtn = new Button { Text = "Close", Dock = DockStyle.Fill, Margin = new Padding(5) }; closeBtn.Click += (s, e) => this.Close(); btnPanel.Controls.Add(closeBtn, 1, 0); mainContainer.Controls.Add(btnPanel, 0, 2);
-            this.Controls.Add(mainContainer); this.ResumeLayout(false);
-        }
-        private Label AddHeaderCell(TableLayoutPanel p, string txt, int r, int c) { var l = new Label { Text = txt, TextAlign = ContentAlignment.MiddleCenter, Dock = DockStyle.Fill, Font = new Font(this.Font, FontStyle.Bold), BackColor = SystemColors.ControlLight }; p.Controls.Add(l, c, r); return l; }
-        private Label AddValueCell(TableLayoutPanel p, string txt, int r, int c, bool highlightDelta = false) { var l = new Label { Text = txt, TextAlign = ContentAlignment.MiddleCenter, Dock = DockStyle.Fill, Font = new Font(this.Font, FontStyle.Regular) }; if (highlightDelta) { decimal.TryParse(txt.Replace("$", "").Replace(",", ""), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.CurrentCulture, out decimal val); l.ForeColor = val == 0 ? SystemColors.ControlText : (val > 0 ? Color.Red : Color.Green); } p.Controls.Add(l, c, r); return l; }
-
-        private void EnsureProjectResourcesHaveInitializedDailyData()
-        {
-            if (_project?.Resources == null) { System.Diagnostics.Debug.WriteLine("EnsureProjectResourcesHaveInitializedDailyData: Project or Resources list is null."); return; }
-            System.Diagnostics.Debug.WriteLine($"EnsureProjectResourcesHaveInitializedDailyData: Checking {_project.Resources.Count} resources.");
-            foreach (var resource in _project.Resources)
+            catch (Exception ex)
             {
-                bool needsInit = resource.DailyData == null || !resource.DailyData.Any() || resource.IsDirty;
-                // More robust check: ensure DailyData covers all expected days or if DaysOnSite has changed
-                if (!needsInit && resource.DailyData != null)
+                System.Diagnostics.Debug.WriteLine("SaveData error: " + ex.Message);
+            }
+        }
+
+        internal void MarkProjectDirty()
+        {
+            if (_project != null)
+            {
+                _project.IsDirty = true;
+                UpdateSummaryPanel();
+            }
+        }
+
+        private void ExportButton_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                using (var saveDialog = new SaveFileDialog())
                 {
-                    int expectedEntries = resource.DaysOnSite + (resource.SeparateTravelTo ? 1 : 0) + (resource.SeparateTravelFrom ? 1 : 0);
-                    if (resource.DailyData.Count != expectedEntries)
+                    saveDialog.Filter = "CSV files (*.csv)|*.csv";
+                    saveDialog.FileName = string.Format("{0}_Results_{1}.csv",
+                        _project.ProjectName,
+                        DateTime.Now.ToString("yyyyMMdd"));
+
+                    if (saveDialog.ShowDialog() == DialogResult.OK)
                     {
-                        //This check might be too strict if travel days are optional or have complex keying
-                        //needsInit = true; 
-                        //System.Diagnostics.Debug.WriteLine($"Resource {resource.TechnicianName} DailyData count ({resource.DailyData.Count}) mismatch with expected ({expectedEntries}). Flagging for re-init.");
+                        ExportToCSV(saveDialog.FileName);
                     }
                 }
-
-                if (needsInit)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Initializing schedule for resource: {resource.TechnicianName}");
-                    resource.InitializeFromSchedule();
-                    System.Diagnostics.Debug.WriteLine($"Post-Init DailyData count for {resource.TechnicianName}: {resource.DailyData?.Count ?? 0}");
-                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Export error: " + ex.Message);
             }
         }
-        private void UpdateSummaryPanel()
-        { /* ... Same as v6 ... */
-            if (_project == null) return;
-            Control c01 = _summaryPanel.GetControlFromPosition(0, 1); if (c01 is Label l01) l01.Text = _project.InitialEstimate.ToString("C2");
-            Control c11 = _summaryPanel.GetControlFromPosition(1, 1); if (c11 is Label l11) l11.Text = _project.PlannedTotal.ToString("C2");
-            Control c21 = _summaryPanel.GetControlFromPosition(2, 1); if (c21 is Label l21) l21.Text = _project.CurrentTotal.ToString("C2");
-            Control c31 = _summaryPanel.GetControlFromPosition(3, 1); if (c31 is Label l31) { l31.Text = _project.ForecastTotal.ToString("C2"); l31.ForeColor = _project.ForecastTotal > _project.InitialEstimate && _project.InitialEstimate != 0 ? Color.Red : SystemColors.ControlText; }
-            Control c41 = _summaryPanel.GetControlFromPosition(4, 1); if (c41 is Label l41) { decimal d = _project.ForecastTotal - _project.InitialEstimate; l41.Text = d.ToString("C2"); l41.ForeColor = d == 0 ? SystemColors.ControlText : (d > 0 ? Color.Red : Color.Green); }
-        }
 
-        private void UpdateResourceGrid()
+        private void ExportToCSV(string fileName)
         {
-            System.Diagnostics.Debug.WriteLine("UpdateResourceGrid called - IMPROVED VERSION");
-
-            _resourcesContainer.Controls.Clear();
-
-            if (_project?.Resources == null || !_project.Resources.Any())
+            try
             {
-                _resourcesContainer.Controls.Add(new Label
+                var sb = new StringBuilder();
+
+                // Headers
+                sb.AppendLine("Resource,Date,Day,Service Reg Hours,Service OT Hours,Service Premium Hours," +
+                             "Travel Reg Hours,Travel OT Hours,Travel Premium Hours," +
+                             "Mileage,Per Diem,Flight,Car Rental,Hotel,Total");
+
+                // Data
+                foreach (var resourcePanel in _resourcePanels)
                 {
-                    Text = "No resources in this project.",
-                    Dock = DockStyle.Fill,
-                    TextAlign = ContentAlignment.MiddleCenter
-                });
-                return;
+                    resourcePanel.AppendCSVData(sb);
+                }
+
+                File.WriteAllText(fileName, sb.ToString());
+
+                MessageBox.Show("Export completed successfully!", "Export",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error exporting data: " + ex.Message, "Export Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            _isClosing = true;
+            SaveData();
+            base.OnFormClosing(e);
+        }
+
+        public void UpdateResults(CommissioningProject project)
+        {
+            _project = project;
+            RefreshData();
+        }
+    }
+
+    // Resource Panel Class
+    internal class ResourcePanel : Panel
+    {
+        private CommissioningResource _resource;
+        private CommissioningResultsWindow _parentWindow;
+        private TableLayoutPanel _gridPanel;
+        private Label _headerLabel;
+        private Label _totalLabel;
+        private bool _isExpanded = true;
+        private Button _toggleButton;
+        private Dictionary<string, EditableCell> _editableCells;
+
+        public ResourcePanel(CommissioningResource resource, CommissioningResultsWindow parentWindow)
+        {
+            _resource = resource;
+            _parentWindow = parentWindow;
+            _editableCells = new Dictionary<string, EditableCell>();
+
+            this.BorderStyle = BorderStyle.FixedSingle;
+            this.MinimumSize = new Size(0, 400); 
+            this.AutoSize = true;
+            this.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+
+            Initialize();
+        }
+
+        private void Initialize()
+        {
+            CreateHeader();
+            CreateGrid();
+            PopulateData();
+        }
+
+        private void CreateHeader()
+        {
+            var headerPanel = new Panel();
+            headerPanel.Height = 30;
+            headerPanel.Dock = DockStyle.Top;
+            headerPanel.BackColor = SystemColors.ActiveCaption;
+
+            _toggleButton = new Button();
+            _toggleButton.Text = "−";
+            _toggleButton.Size = new Size(25, 25);
+            _toggleButton.Location = new Point(5, 2);
+            _toggleButton.Click += ToggleButton_Click;
+
+            string headerText = string.Format("Resource: {0} ({1} days)",
+                _resource.TechnicianName,
+                _resource.DailyData?.Count ?? 0);
+
+            _headerLabel = new Label();
+            _headerLabel.Text = headerText;
+            _headerLabel.Location = new Point(35, 5);
+            _headerLabel.AutoSize = true;
+            _headerLabel.Font = new Font(this.Font, FontStyle.Bold);
+            _headerLabel.ForeColor = SystemColors.ActiveCaptionText;
+
+            _totalLabel = new Label();
+            _totalLabel.Text = "Total: $0.00";
+            _totalLabel.AutoSize = true;
+            _totalLabel.Font = new Font(this.Font, FontStyle.Bold);
+            _totalLabel.ForeColor = SystemColors.ActiveCaptionText;
+            _totalLabel.Location = new Point(this.Width - 150, 5);
+
+            headerPanel.Controls.Add(_toggleButton);
+            headerPanel.Controls.Add(_headerLabel);
+            headerPanel.Controls.Add(_totalLabel);
+
+            this.Controls.Add(headerPanel);
+        }
+
+        private void CreateGrid()
+        {
+            _gridPanel = new TableLayoutPanel();
+            _gridPanel.Location = new Point(0, 30);
+            _gridPanel.AutoSize = true;
+            _gridPanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            _gridPanel.CellBorderStyle = TableLayoutPanelCellBorderStyle.Single;
+            this.Controls.Add(_gridPanel);
+        }
+
+        private void ToggleButton_Click(object sender, EventArgs e)
+        {
+            _isExpanded = !_isExpanded;
+            _toggleButton.Text = _isExpanded ? "−" : "+";
+            _gridPanel.Visible = _isExpanded;
+
+            if (!_isExpanded)
+            {
+                this.Height = 30;
+            }
+            else
+            {
+                this.AutoSize = true;
+            }
+        }
+
+        private void PopulateData()
+        {
+            if (_resource.DailyData == null || !_resource.DailyData.Any()) return;
+
+            var orderedDays = _resource.DailyData
+                .Where(kvp => kvp.Value.Date != DateTime.MinValue)
+                .OrderBy(kvp => kvp.Value.Date)
+                .ToList();
+
+            if (orderedDays.Count == 0) return;
+
+            SetupGridStructure(orderedDays.Count);
+            AddHeaders(orderedDays);
+            AddDataRows(orderedDays);
+            UpdateTotalLabel();
+        }
+
+        private void SetupGridStructure(int dayCount)
+        {
+            int columnCount = 1 + (dayCount * 3);
+            _gridPanel.ColumnCount = columnCount;
+            _gridPanel.RowCount = 15;
+
+            _gridPanel.ColumnStyles.Clear();
+            _gridPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+
+            for (int i = 0; i < _gridPanel.RowCount; i++)
+            {
+                _gridPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 22)); 
             }
 
-            // Create a simple working grid for each resource
-            foreach (var resource in _project.Resources.OrderBy(r => r.TechnicianName))
+            for (int i = 0; i < dayCount; i++)
             {
-                System.Diagnostics.Debug.WriteLine($"Creating display for resource: {resource.TechnicianName}");
+                _gridPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
+                _gridPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
+                _gridPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
+            }
+        }
 
-                // Resource header
-                var headerPanel = new Panel
+        private void AddHeaders(List<KeyValuePair<int, ResourceDayData>> orderedDays)
+        {
+            AddCell(0, 0, "", true);
+
+            int col = 1;
+            foreach (var dayEntry in orderedDays)
+            {
+                var date = dayEntry.Value.Date;
+                var dayHeader = CreateLabel(date.ToString("ddd MMM dd"), true);
+                dayHeader.BackColor = SystemColors.ControlLight;
+                _gridPanel.Controls.Add(dayHeader, col, 0);
+                _gridPanel.SetColumnSpan(dayHeader, 3);
+
+                AddCell(1, col, "Planned", true, Color.LightGray);
+                AddCell(1, col + 1, "Actual", true, Color.LightGray);
+                AddCell(1, col + 2, "Delta", true, Color.LightGray);
+
+                col += 3;
+            }
+        }
+
+        private void AddDataRows(List<KeyValuePair<int, ResourceDayData>> orderedDays)
+        {
+            int row = 2;
+
+            // Service rows
+            AddDataRow(row++, "Service (Reg)", orderedDays, "ServiceReg");
+            AddDataRow(row++, "Service (OT)", orderedDays, "ServiceOT");
+            AddDataRow(row++, "Service (Premium)", orderedDays, "ServicePrem");
+
+            // Travel rows
+            AddDataRow(row++, "Travel (Reg)", orderedDays, "TravelReg");
+            AddDataRow(row++, "Travel (OT)", orderedDays, "TravelOT");
+            AddDataRow(row++, "Travel (Premium)", orderedDays, "TravelPrem");
+
+            // Subtotal
+            AddSubtotalRow(row++, "Subtotals - Charges", orderedDays, true);
+
+            // Expenses
+            AddDataRow(row++, "Mileage", orderedDays, "Mileage");
+            AddDataRow(row++, "Per Diem", orderedDays, "PerDiem");
+            AddDataRow(row++, "Flight", orderedDays, "Flight");
+            AddDataRow(row++, "Car Rental, Taxis, Train", orderedDays, "CarRental");
+            AddDataRow(row++, "Hotel", orderedDays, "Hotel");
+
+            // Expense subtotal
+            AddSubtotalRow(row++, "Subtotals - Charges", orderedDays, false);
+
+            // Total
+            AddTotalsRow(row, orderedDays);
+        }
+
+        private void AddCell(int row, int col, string text, bool isHeader, Color? backColor = null)
+        {
+            var label = CreateLabel(text, isHeader);
+            if (backColor.HasValue)
+                label.BackColor = backColor.Value;
+            else if (isHeader)
+                label.BackColor = SystemColors.ControlLight;
+
+            _gridPanel.Controls.Add(label, col, row);
+        }
+
+        private Label CreateLabel(string text, bool isHeader)
+        {
+            var label = new Label();
+            label.Text = text;
+            label.TextAlign = ContentAlignment.MiddleCenter;
+            label.Dock = DockStyle.Fill;
+            if (isHeader)
+                label.Font = new Font(this.Font, FontStyle.Bold);
+            return label;
+        }
+
+        private void AddDataRow(int row, string rowLabel, List<KeyValuePair<int, ResourceDayData>> orderedDays, string dataType)
+        {
+            var label = new Label();
+            label.Text = rowLabel;
+            label.TextAlign = ContentAlignment.MiddleLeft;
+            label.Dock = DockStyle.Fill;
+            label.Padding = new Padding(5, 0, 0, 0);
+            _gridPanel.Controls.Add(label, 0, row);
+
+            int col = 1;
+            foreach (var dayEntry in orderedDays)
+            {
+                var dayData = dayEntry.Value;
+                decimal plannedValue = GetPlannedValue(dayData, dataType);
+                decimal actualValue = GetActualValue(dayData, dataType);
+                decimal delta = actualValue - plannedValue;
+
+                AddValueCell(row, col, plannedValue, false);
+                AddEditableCell(row, col + 1, actualValue, dataType, dayEntry.Key, dayData);
+                AddDeltaCell(row, col + 2, delta);
+
+                col += 3;
+            }
+        }
+
+        private void AddSubtotalRow(int row, string label, List<KeyValuePair<int, ResourceDayData>> orderedDays, bool isCharges)
+        {
+            var rowLabel = CreateLabel(label, true);
+            rowLabel.TextAlign = ContentAlignment.MiddleLeft;
+            rowLabel.BackColor = Color.LightYellow;
+            rowLabel.Padding = new Padding(5, 0, 0, 0);
+            _gridPanel.Controls.Add(rowLabel, 0, row);
+
+            int col = 1;
+            foreach (var dayEntry in orderedDays)
+            {
+                var dayData = dayEntry.Value;
+                decimal plannedSubtotal = CalculateSubtotal(dayData, isCharges, true);
+                decimal actualSubtotal = CalculateSubtotal(dayData, isCharges, false);
+                decimal delta = actualSubtotal - plannedSubtotal;
+
+                AddValueCell(row, col, plannedSubtotal, true, Color.LightYellow);
+                AddValueCell(row, col + 1, actualSubtotal, true, Color.LightYellow);
+                AddDeltaCell(row, col + 2, delta, Color.LightYellow);
+
+                col += 3;
+            }
+        }
+
+        private void AddTotalsRow(int row, List<KeyValuePair<int, ResourceDayData>> orderedDays)
+        {
+            var rowLabel = CreateLabel("Totals", true);
+            rowLabel.TextAlign = ContentAlignment.MiddleLeft;
+            rowLabel.BackColor = Color.Yellow;
+            rowLabel.Padding = new Padding(5, 0, 0, 0);
+            _gridPanel.Controls.Add(rowLabel, 0, row);
+
+            int col = 1;
+            foreach (var dayEntry in orderedDays)
+            {
+                var dayData = dayEntry.Value;
+                decimal plannedTotal = CalculateDayTotal(dayData, true);
+                decimal actualTotal = CalculateDayTotal(dayData, false);
+                decimal delta = actualTotal - plannedTotal;
+
+                AddValueCell(row, col, plannedTotal, true, Color.Yellow);
+                AddValueCell(row, col + 1, actualTotal, true, Color.Yellow);
+                AddDeltaCell(row, col + 2, delta, Color.Yellow);
+
+                col += 3;
+            }
+        }
+
+        private void AddValueCell(int row, int col, decimal value, bool isBold, Color? backColor = null)
+        {
+            var label = new Label();
+
+            // Check if this is a service/travel row (rows 2-7) to format as hours
+            if (row >= 2 && row <= 7)
+            {
+                label.Text = value.ToString("F1"); // Format as hours with 1 decimal
+            }
+            else
+            {
+                label.Text = value.ToString("C2"); // Format as currency
+            }
+
+            label.TextAlign = ContentAlignment.MiddleRight;
+            label.Dock = DockStyle.Fill;
+            if (isBold)
+                label.Font = new Font(this.Font, FontStyle.Bold);
+            if (backColor.HasValue)
+                label.BackColor = backColor.Value;
+
+            _gridPanel.Controls.Add(label, col, row);
+        }
+
+        private void AddEditableCell(int row, int col, decimal value, string dataType, int dayKey, ResourceDayData dayData)
+        {
+            var editableCell = new EditableCell(value, dataType, dayKey, dayData, _resource, this);
+            editableCell.Dock = DockStyle.Fill;
+
+            string cellKey = string.Format("{0}_{1}", dayKey, dataType);
+            _editableCells[cellKey] = editableCell;
+
+            _gridPanel.Controls.Add(editableCell, col, row);
+        }
+
+        private void AddDeltaCell(int row, int col, decimal delta, Color? backColor = null)
+        {
+            var label = new Label();
+            label.Text = delta.ToString("C2");
+            label.TextAlign = ContentAlignment.MiddleRight;
+            label.Dock = DockStyle.Fill;
+            label.ForeColor = delta == 0 ? Color.Black : (delta > 0 ? Color.Red : Color.Green);
+            if (backColor.HasValue)
+                label.BackColor = backColor.Value;
+
+            _gridPanel.Controls.Add(label, col, row);
+        }
+
+        // Continuation of ResourcePanel class methods
+
+        private decimal GetPlannedValue(ResourceDayData dayData, string dataType)
+        {
+            if (dataType == "ServiceReg")
+                return dayData.PlannedRegularLabourHours; // Just hours, not × rate
+            else if (dataType == "ServiceOT")
+                return dayData.PlannedOvertimeLabourHours; // Just hours
+            else if (dataType == "ServicePrem")
+                return dayData.PlannedPremiumLabourHours; // Just hours
+            else if (dataType == "TravelReg")
+                return dayData.PlannedRegularTravelHours; // Just hours
+            else if (dataType == "TravelOT")
+                return dayData.PlannedOvertimeTravelHours; // Just hours
+            else if (dataType == "TravelPrem")
+                return dayData.PlannedPremiumTravelHours; // Just hours
+            else if (dataType == "Mileage")
+                return dayData.PlannedMileageCost;
+            else if (dataType == "PerDiem")
+                return dayData.PlannedPerDiemCost;
+            else if (dataType == "Flight")
+                return dayData.PlannedFlightCost;
+            else if (dataType == "CarRental")
+                return dayData.PlannedRentalCarCost;
+            else if (dataType == "Hotel")
+                return dayData.PlannedHotelCost;
+            else
+                return 0;
+        }
+
+        private decimal GetActualValue(ResourceDayData dayData, string dataType)
+        {
+            if (dataType == "ServiceReg")
+                return dayData.ActualRegularLabourHours; // Just hours
+            else if (dataType == "ServiceOT")
+                return dayData.ActualOvertimeLabourHours; // Just hours
+            else if (dataType == "ServicePrem")
+                return dayData.ActualPremiumLabourHours; // Just hours
+            else if (dataType == "TravelReg")
+                return dayData.ActualRegularTravelHours; // Just hours
+            else if (dataType == "TravelOT")
+                return dayData.ActualOvertimeTravelHours; // Just hours
+            else if (dataType == "TravelPrem")
+                return dayData.ActualPremiumTravelHours; // Just hours
+            else if (dataType == "Mileage")
+                return dayData.ActualMileageCost;
+            else if (dataType == "PerDiem")
+                return dayData.ActualPerDiemCost;
+            else if (dataType == "Flight")
+                return dayData.ActualFlightCost;
+            else if (dataType == "CarRental")
+                return dayData.ActualRentalCarCost;
+            else if (dataType == "Hotel")
+                return dayData.ActualHotelCost;
+            else
+                return 0;
+        }
+
+        private decimal GetRegularLabourRate()
+        {
+            decimal rate = _resource.RegularLabourRate;
+            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
+            return _resource.IsEmergency ? _resource.PremiumLabourRate * discountFactor : rate * discountFactor;
+        }
+
+        private decimal GetOvertimeLabourRate()
+        {
+            decimal rate = _resource.OvertimeLabourRate;
+            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
+            return _resource.IsEmergency ? _resource.PremiumLabourRate * discountFactor : rate * discountFactor;
+        }
+
+        private decimal GetPremiumLabourRate()
+        {
+            decimal rate = _resource.PremiumLabourRate;
+            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
+            return rate * discountFactor;
+        }
+
+        private decimal GetRegularTravelRate()
+        {
+            decimal rate = _resource.RegularTravelRate;
+            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
+            return _resource.IsEmergency ? _resource.PremiumTravelRate * discountFactor : rate * discountFactor;
+        }
+
+        private decimal GetOvertimeTravelRate()
+        {
+            decimal rate = _resource.OvertimeTravelRate;
+            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
+            return _resource.IsEmergency ? _resource.PremiumTravelRate * discountFactor : rate * discountFactor;
+        }
+
+        private decimal GetPremiumTravelRate()
+        {
+            decimal rate = _resource.PremiumTravelRate;
+            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
+            return rate * discountFactor;
+        }
+
+        private decimal CalculateSubtotal(ResourceDayData dayData, bool isCharges, bool isPlanned)
+        {
+            if (isCharges)
+            {
+                if (isPlanned)
                 {
-                    Height = 30,
-                    Dock = DockStyle.Top,
-                    BackColor = SystemColors.ActiveCaption,
-                    Margin = new Padding(0, 5, 0, 0)
-                };
-
-                var headerLabel = new Label
-                {
-                    Text = $"Resource: {resource.TechnicianName} ({resource.DailyData?.Count ?? 0} days)",
-                    Dock = DockStyle.Fill,
-                    TextAlign = ContentAlignment.MiddleLeft,
-                    ForeColor = SystemColors.ActiveCaptionText,
-                    Font = new Font(this.Font, FontStyle.Bold),
-                    Padding = new Padding(10, 5, 5, 5)
-                };
-
-                headerPanel.Controls.Add(headerLabel);
-                _resourcesContainer.Controls.Add(headerPanel);
-
-                // Simple data grid
-                if (resource.DailyData != null && resource.DailyData.Any())
-                {
-                    var gridPanel = new Panel
-                    {
-                        Height = 150,
-                        Dock = DockStyle.Top,
-                        BorderStyle = BorderStyle.FixedSingle,
-                        AutoScroll = true
-                    };
-
-                    var grid = new DataGridView
-                    {
-                        Dock = DockStyle.Fill,
-                        AutoGenerateColumns = false,
-                        AllowUserToAddRows = false,
-                        AllowUserToDeleteRows = false,
-                        ReadOnly = true,
-                        BackgroundColor = SystemColors.Window,
-                        BorderStyle = BorderStyle.None
-                    };
-
-                    // Add columns
-                    grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Date", DataPropertyName = "DateString", Width = 100 });
-                    grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Planned Hours", DataPropertyName = "PlannedHours", Width = 100 });
-                    grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Actual Hours", DataPropertyName = "ActualHours", Width = 100 });
-                    grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Planned Cost", DataPropertyName = "PlannedCost", Width = 100 });
-                    grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Actual Cost", DataPropertyName = "ActualCost", Width = 100 });
-
-                    // Create data source
-                    var gridData = resource.DailyData.Values
-                        .Where(d => d.Date != DateTime.MinValue)
-                        .OrderBy(d => d.Date)
-                        .Select(d => new
-                        {
-                            DateString = d.Date.ToString("ddd MMM dd"),
-                            PlannedHours = (d.GetPlannedLabourHoursTotal() + d.GetPlannedTravelHoursTotal()).ToString("F1"),
-                            ActualHours = (d.GetActualLabourHoursTotal() + d.GetActualTravelHoursTotal()).ToString("F1"),
-                            PlannedCost = (d.PlannedPerDiemCost + d.PlannedHotelCost + d.PlannedMileageCost + d.PlannedFlightCost + d.PlannedRentalCarCost).ToString("C2"),
-                            ActualCost = (d.ActualPerDiemCost + d.ActualHotelCost + d.ActualMileageCost + d.ActualFlightCost + d.ActualRentalCarCost).ToString("C2")
-                        }).ToList();
-
-                    grid.DataSource = gridData;
-                    gridPanel.Controls.Add(grid);
-                    _resourcesContainer.Controls.Add(gridPanel);
-
-                    System.Diagnostics.Debug.WriteLine($"Added grid for {resource.TechnicianName} with {gridData.Count} rows");
+                    return (dayData.PlannedRegularLabourHours * GetRegularLabourRate()) +
+                           (dayData.PlannedOvertimeLabourHours * GetOvertimeLabourRate()) +
+                           (dayData.PlannedPremiumLabourHours * GetPremiumLabourRate()) +
+                           (dayData.PlannedRegularTravelHours * GetRegularTravelRate()) +
+                           (dayData.PlannedOvertimeTravelHours * GetOvertimeTravelRate()) +
+                           (dayData.PlannedPremiumTravelHours * GetPremiumTravelRate());
                 }
                 else
                 {
-                    var noDataLabel = new Label
-                    {
-                        Text = "No daily data available for this resource",
-                        Height = 30,
-                        Dock = DockStyle.Top,
-                        TextAlign = ContentAlignment.MiddleCenter,
-                        BackColor = SystemColors.Control
-                    };
-                    _resourcesContainer.Controls.Add(noDataLabel);
+                    return (dayData.ActualRegularLabourHours * GetRegularLabourRate()) +
+                           (dayData.ActualOvertimeLabourHours * GetOvertimeLabourRate()) +
+                           (dayData.ActualPremiumLabourHours * GetPremiumLabourRate()) +
+                           (dayData.ActualRegularTravelHours * GetRegularTravelRate()) +
+                           (dayData.ActualOvertimeTravelHours * GetOvertimeTravelRate()) +
+                           (dayData.ActualPremiumTravelHours * GetPremiumTravelRate());
                 }
             }
-
-            System.Diagnostics.Debug.WriteLine("UpdateResourceGrid improved version finished");
-        }
-
-        private Panel CreateResourcePanelWithActuals(CommissioningResource resource)
-        { /* ... Same as v6 ... */
-            System.Diagnostics.Debug.WriteLine($"CreateResourcePanelWithActuals: Creating panel for {resource.TechnicianName}");
-
-            var p = new Panel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = new Padding(0, 0, 0, 15), Width = 1200 };
-            var hL = new Label { Text = $"Resource: {resource.TechnicianName}", Dock = DockStyle.Top, Height = 25, TextAlign = ContentAlignment.MiddleLeft, Font = new Font(this.Font, FontStyle.Bold), BackColor = SystemColors.ActiveCaption, ForeColor = SystemColors.ActiveCaptionText, Padding = new Padding(5, 0, 0, 0) }; p.Controls.Add(hL);
-            var g = CreateResourceGridWithActuals(resource); g.Dock = DockStyle.Top; g.Top = hL.Height; p.Controls.Add(g);
-
-            System.Diagnostics.Debug.WriteLine($"CreateResourcePanelWithActuals: Panel created for {resource.TechnicianName}, controls count: {p.Controls.Count}");
-            return p;
-        }
-
-        private TableLayoutPanel CreateResourceGridWithActuals(CommissioningResource resource)
-        { /* ... Same as v6, ensure AddActualInputCells is called correctly ... */
-            var orderedDailyData = resource.DailyData.Values.Where(d => d.Date != DateTime.MinValue).OrderBy(d => d.Date).ToList();
-            int numDayEntriesToDisplay = orderedDailyData.Count;
-            if (numDayEntriesToDisplay == 0) { var eg = new TableLayoutPanel { AutoSize = true, Margin = new Padding(0) }; eg.Controls.Add(new Label { Text = "No valid daily schedule data to display.", AutoSize = true }); System.Diagnostics.Debug.WriteLine($"CreateResourceGridWithActuals: No valid day entries for {resource.TechnicianName}"); return eg; }
-
-            System.Diagnostics.Debug.WriteLine($"CreateResourceGridWithActuals for {resource.TechnicianName}: {numDayEntriesToDisplay} day entries.");
-
-            int columnCount = 1 + (numDayEntriesToDisplay * 3);
-            var actualInputRows = new[] {
-                new { Header = "Actual Start Time", InputType = ActualInputType.ActualStartTime, IsCost = false },
-                new { Header = "Actual Total Hours Worked", InputType = ActualInputType.ActualTotalHoursWorked, IsCost = false },
-                new { Header = "Actual Total Travel Hours", InputType = ActualInputType.ActualTotalTravelHours, IsCost = false },
-                new { Header = "Actual Per Diem ($)", InputType = ActualInputType.PerDiemCost, IsCost = true },
-                new { Header = "Actual Hotel Cost ($)", InputType = ActualInputType.HotelCost, IsCost = true },
-                new { Header = "Actual Mileage Cost ($)", InputType = ActualInputType.MileageCost, IsCost = true },
-                new { Header = "Actual Flight Cost ($)", InputType = ActualInputType.FlightCost, IsCost = true },
-                new { Header = "Actual Rental Car Cost ($)", InputType = ActualInputType.RentalCarCost, IsCost = true }};
-            int rowCountData = actualInputRows.Length; int rowCountHeader = 2; int rowCount = rowCountHeader + rowCountData;
-            var grid = new TableLayoutPanel { RowCount = rowCount, ColumnCount = columnCount, CellBorderStyle = TableLayoutPanelCellBorderStyle.Single, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = new Padding(0) };
-            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180));
-            for (int i = 0; i < numDayEntriesToDisplay; i++) { for (int j = 0; j < 3; j++) grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 65)); }
-
-            grid.Controls.Add(new Label { Text = "Item", Dock = DockStyle.Fill, BackColor = SystemColors.ControlLight, Font = new Font(this.Font, FontStyle.Bold), TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(3, 0, 0, 0) }, 0, 0);
-            grid.SetRowSpan(grid.GetControlFromPosition(0, 0), 2);
-            for (int i = 0; i < numDayEntriesToDisplay; i++) { ResourceDayData dayData = orderedDailyData[i]; var dayHeader = new Label { Text = dayData.Date.ToString("ddd MMM dd"), TextAlign = ContentAlignment.MiddleCenter, Dock = DockStyle.Fill, Font = new Font(this.Font.FontFamily, 7, FontStyle.Bold), BackColor = SystemColors.ControlLight }; grid.Controls.Add(dayHeader, 1 + (i * 3), 0); grid.SetColumnSpan(dayHeader, 3); }
-            for (int i = 0; i < numDayEntriesToDisplay; i++) { grid.Controls.Add(new Label { Text = "Plan", TextAlign = ContentAlignment.MiddleCenter, Dock = DockStyle.Fill, Font = new Font(this.Font.FontFamily, 7), BackColor = SystemColors.ControlLight }, 1 + (i * 3) + 0, 1); grid.Controls.Add(new Label { Text = "Actual", TextAlign = ContentAlignment.MiddleCenter, Dock = DockStyle.Fill, Font = new Font(this.Font.FontFamily, 7), BackColor = SystemColors.ControlLight }, 1 + (i * 3) + 1, 1); grid.Controls.Add(new Label { Text = "Delta", TextAlign = ContentAlignment.MiddleCenter, Dock = DockStyle.Fill, Font = new Font(this.Font.FontFamily, 7), BackColor = SystemColors.ControlLight }, 1 + (i * 3) + 2, 1); }
-
-            for (int r = 0; r < actualInputRows.Length; r++)
+            else
             {
-                var rowInfo = actualInputRows[r]; grid.Controls.Add(new Label { Text = rowInfo.Header, TextAlign = ContentAlignment.MiddleLeft, Dock = DockStyle.Fill, Font = new Font(this.Font, FontStyle.Regular), Padding = new Padding(3, 0, 0, 0) }, 0, r + rowCountHeader);
-                for (int i = 0; i < numDayEntriesToDisplay; i++) { ResourceDayData dayEntry = orderedDailyData[i]; int dayKey = resource.DailyData.FirstOrDefault(kvp => kvp.Value == dayEntry).Key; AddActualInputCells(grid, resource, dayKey, dayEntry, rowInfo.InputType, rowInfo.IsCost, r + rowCountHeader, 1 + (i * 3)); }
-            }
-            return grid;
-        }
-
-        private void AddActualInputCells(TableLayoutPanel grid, CommissioningResource resource, int dayKey, ResourceDayData dayData, ActualInputType inputType, bool isCostInput, int gridRow, int dayColumnOffset)
-        { /* ... Same as v6 ... */
-            decimal pVal = 0; string actualValStr = ""; Control actualCtrl;
-            switch (inputType) { case ActualInputType.ActualStartTime: actualValStr = dayData.ActualStartTime; pVal = 0; break; case ActualInputType.ActualTotalHoursWorked: pVal = dayData.GetPlannedLabourHoursTotal(); actualValStr = dayData.GetActualLabourHoursTotal().ToString("F1"); break; case ActualInputType.ActualTotalTravelHours: pVal = dayData.GetPlannedTravelHoursTotal(); actualValStr = dayData.GetActualTravelHoursTotal().ToString("F1"); break; case ActualInputType.PerDiemCost: pVal = dayData.PlannedPerDiemCost; actualValStr = dayData.ActualPerDiemCost.ToString("F2"); break; case ActualInputType.HotelCost: pVal = dayData.PlannedHotelCost; actualValStr = dayData.ActualHotelCost.ToString("F2"); break; case ActualInputType.MileageCost: pVal = dayData.PlannedMileageCost; actualValStr = dayData.ActualMileageCost.ToString("F2"); break; case ActualInputType.FlightCost: pVal = dayData.PlannedFlightCost; actualValStr = dayData.ActualFlightCost.ToString("F2"); break; case ActualInputType.RentalCarCost: pVal = dayData.PlannedRentalCarCost; actualValStr = dayData.ActualRentalCarCost.ToString("F2"); break; default: return; }
-            string cellKey = $"{resource.ResourceID}_{dayKey}_{inputType}";
-            var pLbl = new Label { Text = isCostInput ? pVal.ToString("C2") : (inputType == ActualInputType.ActualStartTime ? dayData.PlannedStartTime : pVal.ToString("F1")), TextAlign = ContentAlignment.MiddleCenter, Dock = DockStyle.Fill, Font = new Font(this.Font.FontFamily, 8) };
-            if (inputType == ActualInputType.ActualStartTime) { var cb = new ComboBox { Name = cellKey, Dock = DockStyle.Fill, Font = new Font(this.Font.FontFamily, 8), DropDownStyle = ComboBoxStyle.DropDownList }; PopulateTime12HourCombo(cb); cb.SelectedItem = ConvertTo12Hour(actualValStr); cb.Tag = new ActualInputTag { Resource = resource, DayKey = dayKey, DayDataEntry = dayData, InputType = inputType }; cb.SelectedIndexChanged += ActualInput_Changed; actualCtrl = cb; } else { var tb = new TextBox { Name = cellKey, Text = actualValStr, TextAlign = HorizontalAlignment.Center, Dock = DockStyle.Fill, Font = new Font(this.Font.FontFamily, 8) }; tb.Tag = new ActualInputTag { Resource = resource, DayKey = dayKey, DayDataEntry = dayData, InputType = inputType, IsCost = isCostInput }; tb.TextChanged += ActualInput_TextChanged; tb.Leave += ActualInput_Changed; actualCtrl = tb; _actualInputControls[cellKey] = tb; }
-            decimal curActualDelta = 0; if (inputType != ActualInputType.ActualStartTime) decimal.TryParse(actualValStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.CurrentCulture, out curActualDelta);
-            decimal delta = curActualDelta - pVal;
-            var dLbl = new Label { Name = $"delta_{cellKey}", Text = (inputType == ActualInputType.ActualStartTime || (!isCostInput && inputType != ActualInputType.ActualTotalHoursWorked && inputType != ActualInputType.ActualTotalTravelHours)) ? "" : (isCostInput ? delta.ToString("C2") : delta.ToString("F1")), TextAlign = ContentAlignment.MiddleCenter, Dock = DockStyle.Fill, Font = new Font(this.Font.FontFamily, 8), ForeColor = delta == 0 ? SystemColors.ControlText : (delta > 0 ? Color.Red : Color.Green) };
-            grid.Controls.Add(pLbl, dayColumnOffset, gridRow); grid.Controls.Add(actualCtrl, dayColumnOffset + 1, gridRow); grid.Controls.Add(dLbl, dayColumnOffset + 2, gridRow);
-        }
-
-        private void ActualInput_TextChanged(object sender, EventArgs e) { /* ... Same as v6 ... */ }
-        private void ActualInput_Changed(object sender, EventArgs e)
-        { /* ... Same as v6, ensure RefreshLocalUIData() is called if changed ... */
-            Control ctrl = sender as Control; if (ctrl?.Tag is ActualInputTag tag && tag.DayDataEntry != null)
-            {
-                ResourceDayData dayData = tag.DayDataEntry; bool chg = false; decimal val = 0; string timeVal = "";
-                if (sender is ComboBox cb) timeVal = cb.SelectedItem?.ToString(); else if (sender is TextBox txt) decimal.TryParse(txt.Text, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.CurrentCulture, out val); else return;
-                switch (tag.InputType)
+                if (isPlanned)
                 {
-                    case ActualInputType.ActualStartTime: if (dayData.ActualStartTime != ConvertTo24Hour(timeVal)) { dayData.ActualStartTime = ConvertTo24Hour(timeVal); chg = true; } break;
-                    case ActualInputType.ActualTotalHoursWorked: if (dayData.ActualRegularLabourHours != val || dayData.ActualOvertimeLabourHours != 0 || dayData.ActualPremiumLabourHours != 0) { dayData.ActualRegularLabourHours = val; dayData.ActualOvertimeLabourHours = 0; dayData.ActualPremiumLabourHours = 0; chg = true; } break;
-                    case ActualInputType.ActualTotalTravelHours: if (dayData.ActualRegularTravelHours != val || dayData.ActualOvertimeTravelHours != 0 || dayData.ActualPremiumTravelHours != 0) { dayData.ActualRegularTravelHours = val; dayData.ActualOvertimeTravelHours = 0; dayData.ActualPremiumTravelHours = 0; chg = true; } break;
-                    case ActualInputType.PerDiemCost: if (dayData.ActualPerDiemCost != val) { dayData.ActualPerDiemCost = val; chg = true; } break;
-                    case ActualInputType.HotelCost: if (dayData.ActualHotelCost != val) { dayData.ActualHotelCost = val; chg = true; } break;
-                    case ActualInputType.MileageCost: if (dayData.ActualMileageCost != val) { dayData.ActualMileageCost = val; chg = true; } break;
-                    case ActualInputType.FlightCost: if (dayData.ActualFlightCost != val) { dayData.ActualFlightCost = val; chg = true; } break;
-                    case ActualInputType.RentalCarCost: if (dayData.ActualRentalCarCost != val) { dayData.ActualRentalCarCost = val; chg = true; } break;
+                    return dayData.PlannedMileageCost + dayData.PlannedPerDiemCost +
+                           dayData.PlannedFlightCost + dayData.PlannedRentalCarCost +
+                           dayData.PlannedHotelCost;
                 }
-                if (chg) { tag.Resource.IsDirty = true; _project.IsDirty = true; RefreshLocalUIData(); }
+                else
+                {
+                    return dayData.ActualMileageCost + dayData.ActualPerDiemCost +
+                           dayData.ActualFlightCost + dayData.ActualRentalCarCost +
+                           dayData.ActualHotelCost;
+                }
             }
         }
 
-        private void ExportButton_Click(object sender, EventArgs e) { /* ... Same as v6, adapt for dictionary if necessary ... */ }
-        private void ExportToCSV(string fileName) { /* ... Same as v6, adapt for dictionary if necessary ... */ }
-        protected override void OnFormClosing(FormClosingEventArgs e) { _refreshTimer?.Stop(); _refreshTimer?.Dispose(); base.OnFormClosing(e); }
+        private decimal CalculateDayTotal(ResourceDayData dayData, bool isPlanned)
+        {
+            return CalculateSubtotal(dayData, true, isPlanned) + CalculateSubtotal(dayData, false, isPlanned);
+        }
 
-        private void PopulateTime12HourCombo(ComboBox combo) { combo.Items.Clear(); for (int h = 0; h < 24; h++) for (int m = 0; m < 60; m += 30) combo.Items.Add(new DateTime(2000, 1, 1, h, m, 0).ToString("h:mm tt", System.Globalization.CultureInfo.InvariantCulture)); }
-        private string ConvertTo12Hour(string time24) { if (string.IsNullOrEmpty(time24)) time24 = "07:00"; if (DateTime.TryParseExact(time24, "HH:mm", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out DateTime dt)) return dt.ToString("h:mm tt", System.Globalization.CultureInfo.InvariantCulture); return new DateTime(2000, 1, 1, 7, 0, 0).ToString("h:mm tt"); }
-        private string ConvertTo24Hour(string time12) { if (string.IsNullOrEmpty(time12)) time12 = "7:00 AM"; if (DateTime.TryParse(time12, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out DateTime dt)) return dt.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture); return "07:00"; }
+        internal void UpdateTotalLabel()
+        {
+            decimal total = 0;
+            foreach (var dayEntry in _resource.DailyData.Values)
+            {
+                total += CalculateDayTotal(dayEntry, false);
+            }
+            _totalLabel.Text = string.Format("Total: {0:C2}", total);
+        }
+
+        internal void NotifyValueChanged()
+        {
+            UpdateTotalLabel();
+            _parentWindow.MarkProjectDirty();
+            _parentWindow.SaveData();
+        }
+
+        internal void AppendCSVData(StringBuilder sb)
+        {
+            if (_resource.DailyData == null || !_resource.DailyData.Any()) return;
+
+            var orderedDays = _resource.DailyData
+                .Where(kvp => kvp.Value.Date != DateTime.MinValue)
+                .OrderBy(kvp => kvp.Value.Date)
+                .ToList();
+
+            foreach (var dayEntry in orderedDays)
+            {
+                var dayData = dayEntry.Value;
+                var line = string.Format("{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14}",
+                    _resource.TechnicianName,
+                    dayData.Date.ToShortDateString(),
+                    dayData.Date.ToString("dddd"),
+                    dayData.ActualRegularLabourHours,
+                    dayData.ActualOvertimeLabourHours,
+                    dayData.ActualPremiumLabourHours,
+                    dayData.ActualRegularTravelHours,
+                    dayData.ActualOvertimeTravelHours,
+                    dayData.ActualPremiumTravelHours,
+                    dayData.ActualMileageCost,
+                    dayData.ActualPerDiemCost,
+                    dayData.ActualFlightCost,
+                    dayData.ActualRentalCarCost,
+                    dayData.ActualHotelCost,
+                    CalculateDayTotal(dayData, false)
+                );
+                sb.AppendLine(line);
+            }
+        }
+    }
+
+    // EditableCell Class
+    internal class EditableCell : UserControl
+    {
+        private Label _label;
+        private TextBox _textBox;
+        private decimal _value;
+        private string _dataType;
+        private int _dayKey;
+        private ResourceDayData _dayData;
+        private CommissioningResource _resource;
+        private ResourcePanel _parentPanel;
+        private bool _isEditing = false;
+
+        public EditableCell(decimal value, string dataType, int dayKey, ResourceDayData dayData,
+                          CommissioningResource resource, ResourcePanel parentPanel)
+        {
+            _value = value;
+            _dataType = dataType;
+            _dayKey = dayKey;
+            _dayData = dayData;
+            _resource = resource;
+            _parentPanel = parentPanel;
+
+            InitializeControls();
+        }
+
+        private void InitializeControls()
+        {
+            _label = new Label();
+
+            if (_dataType.StartsWith("Service") || _dataType.StartsWith("Travel"))
+            {
+                _label.Text = _value.ToString("F1"); // Hours format
+            }
+            else
+            {
+                _label.Text = _value.ToString("C2"); // Currency format
+            }
+
+            _label.Text = _value.ToString("C2");
+            _label.TextAlign = ContentAlignment.MiddleRight;
+            _label.Dock = DockStyle.Fill;
+            _label.Cursor = Cursors.Hand;
+            _label.MouseClick += Label_MouseClick;
+
+            _textBox = new TextBox();
+            _textBox.Text = _value.ToString("F2");
+            _textBox.TextAlign = HorizontalAlignment.Right;
+            _textBox.Dock = DockStyle.Fill;
+            _textBox.Visible = false;
+            _textBox.KeyDown += TextBox_KeyDown;
+            _textBox.Leave += TextBox_Leave;
+            _textBox.KeyPress += TextBox_KeyPress;
+
+            this.Controls.Add(_label);
+            this.Controls.Add(_textBox);
+        }
+
+        private void Label_MouseClick(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                StartEdit();
+            }
+        }
+
+        private void StartEdit()
+        {
+            _isEditing = true;
+            _label.Visible = false;
+            _textBox.Visible = true;
+            _textBox.SelectAll();
+            _textBox.Focus();
+        }
+
+        private void EndEdit(bool save)
+        {
+            if (!_isEditing) return;
+
+            _isEditing = false;
+
+            if (save)
+            {
+                decimal newValue;
+                if (decimal.TryParse(_textBox.Text, out newValue))
+                {
+                    if (newValue != _value)
+                    {
+                        _value = newValue;
+                        UpdateDayData(newValue);
+                        _label.Text = _value.ToString("C2");
+                        _parentPanel.NotifyValueChanged();
+                    }
+                }
+            }
+
+            _textBox.Visible = false;
+            _label.Visible = true;
+        }
+
+        private void UpdateDayData(decimal newValue)
+        {
+            // For service and travel, the value IS the hours (not cost)
+            if (_dataType == "ServiceReg")
+                _dayData.ActualRegularLabourHours = newValue;
+            else if (_dataType == "ServiceOT")
+                _dayData.ActualOvertimeLabourHours = newValue;
+            else if (_dataType == "ServicePrem")
+                _dayData.ActualPremiumLabourHours = newValue;
+            else if (_dataType == "TravelReg")
+                _dayData.ActualRegularTravelHours = newValue;
+            else if (_dataType == "TravelOT")
+                _dayData.ActualOvertimeTravelHours = newValue;
+            else if (_dataType == "TravelPrem")
+                _dayData.ActualPremiumTravelHours = newValue;
+            else if (_dataType == "Mileage")
+                _dayData.ActualMileageCost = newValue;
+            else if (_dataType == "PerDiem")
+                _dayData.ActualPerDiemCost = newValue;
+            else if (_dataType == "Flight")
+                _dayData.ActualFlightCost = newValue;
+            else if (_dataType == "CarRental")
+                _dayData.ActualRentalCarCost = newValue;
+            else if (_dataType == "Hotel")
+                _dayData.ActualHotelCost = newValue;
+        }
+
+        private decimal GetRegularLabourRate()
+        {
+            decimal rate = _resource.RegularLabourRate;
+            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
+            return _resource.IsEmergency ? _resource.PremiumLabourRate * discountFactor : rate * discountFactor;
+        }
+
+        private decimal GetOvertimeLabourRate()
+        {
+            decimal rate = _resource.OvertimeLabourRate;
+            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
+            return _resource.IsEmergency ? _resource.PremiumLabourRate * discountFactor : rate * discountFactor;
+        }
+
+        private decimal GetPremiumLabourRate()
+        {
+            decimal rate = _resource.PremiumLabourRate;
+            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
+            return rate * discountFactor;
+        }
+
+        private decimal GetRegularTravelRate()
+        {
+            decimal rate = _resource.RegularTravelRate;
+            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
+            return _resource.IsEmergency ? _resource.PremiumTravelRate * discountFactor : rate * discountFactor;
+        }
+
+        private decimal GetOvertimeTravelRate()
+        {
+            decimal rate = _resource.OvertimeTravelRate;
+            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
+            return _resource.IsEmergency ? _resource.PremiumTravelRate * discountFactor : rate * discountFactor;
+        }
+
+        private decimal GetPremiumTravelRate()
+        {
+            decimal rate = _resource.PremiumTravelRate;
+            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
+            return rate * discountFactor;
+        }
+
+        private void TextBox_KeyPress(object sender, KeyPressEventArgs e)
+        {
+            if (!char.IsControl(e.KeyChar) && !char.IsDigit(e.KeyChar) && e.KeyChar != '.')
+            {
+                e.Handled = true;
+            }
+
+            if (e.KeyChar == '.' && _textBox.Text.IndexOf('.') > -1)
+            {
+                e.Handled = true;
+            }
+        }
+
+        private void TextBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                EndEdit(true);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+            else if (e.KeyCode == Keys.Escape)
+            {
+                _textBox.Text = _value.ToString("F2");
+                EndEdit(false);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        }
+
+        private void TextBox_Leave(object sender, EventArgs e)
+        {
+            EndEdit(true);
+        }
     }
 }
