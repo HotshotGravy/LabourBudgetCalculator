@@ -256,45 +256,19 @@ namespace LabourBudgetCalculator
 
                 foreach (var resource in _project.Resources)
                 {
-                    // Apply any expense changes directly for testing
-                    // These direct assignments will help identify if it's a data issue
-                    // or a UI display issue
-                    foreach (var dayData in resource.DailyData.Values)
-                    {
-                        // Ensure actuals match planned if they're zero
-                        if (dayData.ActualHotelCost == 0)
-                            dayData.ActualHotelCost = dayData.PlannedHotelCost;
-
-                        if (dayData.ActualRentalCarCost == 0)
-                            dayData.ActualRentalCarCost = dayData.PlannedRentalCarCost;
-
-                        if (dayData.ActualFlightCost == 0)
-                            dayData.ActualFlightCost = dayData.PlannedFlightCost;
-
-                        if (dayData.ActualMileageCost == 0)
-                            dayData.ActualMileageCost = dayData.PlannedMileageCost;
-
-                        if (dayData.ActualPerDiemCost == 0)
-                            dayData.ActualPerDiemCost = dayData.PlannedPerDiemCost;
-                    }
 
                     var resourcePanel = new ResourcePanel(resource, this);
                     resourcePanel.Location = new Point(xPos, yPos);
 
-                    // Don't recalculate here since we've already done it above
-                    // Helpers.ExpenseCalculator.CalculateResourceExpenses(resource);
-
-                    // Make sure totals are updated
                     resource.CalculateResourceTotals();
 
-                    // Anchor determines how it behaves if _contentHostPanel resizes,
-                    // but AutoSize on ResourcePanel primarily dictates its size based on its own content.
+
                     resourcePanel.Anchor = AnchorStyles.Top | AnchorStyles.Left;
 
                     _contentHostPanel.Controls.Add(resourcePanel); // Add to _contentHostPanel
                     _resourcePanels.Add(resourcePanel);
 
-                    // The ResourcePanel's Height (due to AutoSize) will be calculated based on its content.
+                   
                     yPos += resourcePanel.Height + 10; // Stack vertically with a 10px margin
                 }
 

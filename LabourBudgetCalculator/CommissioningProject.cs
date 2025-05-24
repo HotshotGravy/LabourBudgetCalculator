@@ -44,37 +44,29 @@ namespace LabourBudgetCalculator
         {
             try
             {
-                PlannedTotal = 0;
+                PlannedTotal = InitialEstimate; // Start with the quoted amount
                 CurrentTotal = 0;
                 ForecastTotal = 0;
 
-                if (Resources == null || !Resources.Any())
+                if (Resources != null && Resources.Any())
                 {
-                    return;
-                }
-
-                foreach (var resource in Resources)
-                {
-                    // Ensure resource has valid daily data
-                    if (resource.DailyData == null || !resource.DailyData.Any() || resource.IsDirty)
+                    // First ensure all resource totals are calculated
+                    foreach (var resource in Resources)
                     {
-                        resource.InitializeFromSchedule();
+                        resource.CalculateResourceTotals();
                     }
 
-                    // Calculate resource totals
-                    resource.CalculateResourceTotals();
-
-                    // Add to project totals
-                    PlannedTotal += resource.PlannedResourceTotal;
-                    CurrentTotal += resource.ActualResourceTotal;
-                    ForecastTotal += resource.ForecastResourceTotal;
+                    // Then sum them up
+                    PlannedTotal = Resources.Sum(r => r.PlannedResourceTotal);
+                    CurrentTotal = Resources.Sum(r => r.ActualResourceTotal);
+                    ForecastTotal = Resources.Sum(r => r.ForecastResourceTotal);
                 }
 
                 IsDirty = false;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error in CalculateTotals for project {ProjectName}: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Error in CalculateTotals: {ex.Message}");
                 IsDirty = true;
             }
         }

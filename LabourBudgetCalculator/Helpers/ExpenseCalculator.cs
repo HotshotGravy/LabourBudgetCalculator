@@ -27,17 +27,13 @@ namespace LabourBudgetCalculator.Helpers
             {
                 if (isFirstOrLastDay && travelDistance > 0)
                 {
-                    // First or last day gets the full travel distance
                     mileageCost = mileageRate * travelDistance;
                 }
                 else if (!isRentalCarUsed && dailyTravelDistance > 0)
                 {
-                    // For middle days, only apply mileage if driving and no rental car
-                    // Daily travel is round trip (multiply by 2)
                     mileageCost = mileageRate * (dailyTravelDistance * 2);
                 }
             }
-
             return mileageCost;
         }
 
@@ -49,10 +45,8 @@ namespace LabourBudgetCalculator.Helpers
             bool hotelRequired,
             bool isLastDay)
         {
-            // No hotel on the last day of travel or if hotel not required
             if (!hotelRequired || isLastDay)
                 return 0;
-
             return hotelRate;
         }
 
@@ -63,38 +57,32 @@ namespace LabourBudgetCalculator.Helpers
            decimal rentalCarRate,
            bool rentalCarRequired)
         {
-            // Check if rental car is required
             if (!rentalCarRequired)
                 return 0;
-
             return rentalCarRate;
         }
-
 
         /// <summary>
         /// Calculates the flight cost based on travel configuration
         /// </summary>
         public static decimal CalculateFlightCost(
-       decimal flightCost,
-       string travelMethod,
-       bool isTravelDay,
-       bool isFirstDay,
-       bool isLastDay,
-       bool separateTravelTo,
-       bool separateTravelFrom)
+           decimal flightCost,
+           string travelMethod,
+           bool isTravelDay,
+           bool isFirstDay,
+           bool isLastDay,
+           bool separateTravelTo,
+           bool separateTravelFrom)
         {
-            // If not flying, no flight cost
             if (travelMethod != "Flight")
                 return 0;
 
-            // Flight costs only apply on travel days or first/last days (if no separate travel)
             if (isTravelDay ||
                 (isFirstDay && !separateTravelTo) ||
                 (isLastDay && !separateTravelFrom))
             {
                 return flightCost;
             }
-
             return 0;
         }
 
@@ -106,10 +94,8 @@ namespace LabourBudgetCalculator.Helpers
             decimal laborHours,
             decimal travelHours)
         {
-            // Apply per diem if there's any work or travel on the day
             if (laborHours > 0 || travelHours > 0)
                 return perDiemRate;
-
             return 0;
         }
 
@@ -125,13 +111,9 @@ namespace LabourBudgetCalculator.Helpers
             decimal otherExpenses,
             decimal markupPercentage = 10)
         {
-            // Apply markup to expenses except mileage and per diem
             decimal expensesWithMarkup = (hotelCost + rentalCarCost + flightCost) *
-                                        (1 + (markupPercentage / 100m));
-
-            // Add mileage and per diem without markup
+                                         (1 + (markupPercentage / 100m));
             decimal totalExpenses = expensesWithMarkup + mileageCost + perDiemCost + otherExpenses;
-
             return totalExpenses;
         }
 
@@ -139,12 +121,12 @@ namespace LabourBudgetCalculator.Helpers
         /// Calculates expenses for a day based on resource configuration
         /// </summary>
         public static void CalculateDayExpenses(
-      ResourceDayData dayData,
-      CommissioningResource resource,
-      int dayIndex,
-      int totalDays,
-      bool separateTravelTo,
-      bool separateTravelFrom)
+           ResourceDayData dayData,
+           CommissioningResource resource,
+           int dayIndex,
+           int totalDays,
+           bool separateTravelTo,
+           bool separateTravelFrom)
         {
             bool isFirstDay = dayIndex == 0;
             bool isLastDay = dayIndex == (totalDays - 1);
@@ -152,67 +134,51 @@ namespace LabourBudgetCalculator.Helpers
             bool isTravelFromDay = separateTravelFrom && isLastDay;
             bool isTravelDay = isTravelToDay || isTravelFromDay;
 
-            // Debug output
             System.Diagnostics.Debug.WriteLine($"Day {dayIndex}: First={isFirstDay}, Last={isLastDay}, TravelTo={isTravelToDay}, TravelFrom={isTravelFromDay}");
             System.Diagnostics.Debug.WriteLine($"Travel Method: {resource.TravelMethod}, Hotel: {resource.HotelRequired}, Rental: {resource.RentalCarRequired}");
 
-            // Calculate each expense type
             dayData.PlannedMileageCost = CalculateMileageCost(
-                resource.MileageRate,
-                resource.TravelDistance,
-                resource.DailyTravelDistance,
-                isFirstDay || isLastDay,
-                resource.RentalCarRequired,
-                resource.TravelMethod);
+                resource.MileageRate, resource.TravelDistance, resource.DailyTravelDistance,
+                isFirstDay || isLastDay, resource.RentalCarRequired, resource.TravelMethod);
 
             dayData.PlannedHotelCost = CalculateHotelCost(
-                resource.HotelRate,
-                resource.HotelRequired,
-                isLastDay);
+                resource.HotelRate, resource.HotelRequired, isLastDay);
 
             dayData.PlannedRentalCarCost = CalculateRentalCarCost(
-                resource.RentalCarRate,
-                resource.RentalCarRequired);
+                resource.RentalCarRate, resource.RentalCarRequired);
 
             dayData.PlannedFlightCost = CalculateFlightCost(
-                resource.FlightCost,
-                resource.TravelMethod,
-                isTravelDay,
-                isFirstDay,
-                isLastDay,
-                separateTravelTo,
-                separateTravelFrom);
+                resource.FlightCost, resource.TravelMethod, isTravelDay,
+                isFirstDay, isLastDay, separateTravelTo, separateTravelFrom);
 
             decimal laborHours = dayData.GetPlannedLabourHoursTotal();
             decimal travelHours = dayData.GetPlannedTravelHoursTotal();
             dayData.PlannedPerDiemCost = CalculatePerDiemCost(
-                resource.PerDiemRate,
-                laborHours,
-                travelHours);
+                resource.PerDiemRate, laborHours, travelHours);
 
-            // Debug output of calculated expenses
             System.Diagnostics.Debug.WriteLine($"Calculated expenses: Mileage={dayData.PlannedMileageCost}, Hotel={dayData.PlannedHotelCost}, " +
                 $"Rental={dayData.PlannedRentalCarCost}, Flight={dayData.PlannedFlightCost}, PerDiem={dayData.PlannedPerDiemCost}");
         }
 
+        // This method is no longer needed if InitializeFromSchedule in CommissioningResource
+        // is the sole authority for setting initial Actuals from Planned.
+        // You can choose to delete it or keep it if it's used elsewhere,
+        // but it should not be called from CalculateResourceExpenses.
+        /*
         public static void InitializeActualsFromPlanned(ResourceDayData dayData)
         {
-            // Only initialize if actuals haven't been set yet
             if (dayData.ActualMileageCost == 0)
                 dayData.ActualMileageCost = dayData.PlannedMileageCost;
-
             if (dayData.ActualHotelCost == 0)
                 dayData.ActualHotelCost = dayData.PlannedHotelCost;
-
             if (dayData.ActualRentalCarCost == 0)
                 dayData.ActualRentalCarCost = dayData.PlannedRentalCarCost;
-
             if (dayData.ActualFlightCost == 0)
                 dayData.ActualFlightCost = dayData.PlannedFlightCost;
-
             if (dayData.ActualPerDiemCost == 0)
                 dayData.ActualPerDiemCost = dayData.PlannedPerDiemCost;
         }
+        */
 
         /// <summary>
         /// Calculates all expenses for a resource
@@ -222,38 +188,41 @@ namespace LabourBudgetCalculator.Helpers
             if (resource.DailyData == null || !resource.DailyData.Any())
                 return;
 
-            int totalDays = resource.DailyData.Count;
-            bool separateTravelTo = resource.SeparateTravelTo;
-            bool separateTravelFrom = resource.SeparateTravelFrom;
+            int totalEngagementDays = 0; // Recalculate based on actual keys present to be more robust
+            if (resource.DailyData.ContainsKey(-1)) totalEngagementDays++; // Travel To
+            totalEngagementDays += resource.DaysOnSite;
+            if (resource.DailyData.ContainsKey(resource.DaysOnSite)) totalEngagementDays++; // Travel From
 
-            foreach (var kvp in resource.DailyData)
+            // Create a sorted list of day entries to process them chronologically for dayIndex
+            var orderedDays = resource.DailyData.OrderBy(kvp => kvp.Value.Date).ToList();
+            if (!orderedDays.Any()) return;
+
+            // Determine the actual number of distinct days represented in the data for day indexing
+            // This count might differ from 'totalEngagementDays' if data is sparse or keys are not contiguous.
+            // For robust day indexing, we'll use the position in the ordered list.
+            int actualDayCountInSchedule = orderedDays.Count;
+
+
+            for (int i = 0; i < actualDayCountInSchedule; i++)
             {
-                int dayKey = kvp.Key;
+                var kvp = orderedDays[i];
+                // int dayKey = kvp.Key; // dayKey might not be contiguous or match 'i' perfectly
                 ResourceDayData dayData = kvp.Value;
 
-                // Special handling for travel days
-                int dayIndex = 0;
-                if (dayKey == -1) // Travel TO day
-                {
-                    dayIndex = 0;
-                }
-                else if (dayKey == resource.DaysOnSite) // Travel FROM day
-                {
-                    dayIndex = totalDays - 1;
-                }
-                else
-                {
-                    dayIndex = dayKey;
-                }
-
+                // Use 'i' as the chronological dayIndex for calculations within CalculateDayExpenses
+                // This 'i' will be 0 for the earliest day, 1 for the next, etc.
+                // 'actualDayCountInSchedule' is the total number of days being processed.
                 CalculateDayExpenses(
                     dayData,
                     resource,
-                    dayIndex,
-                    totalDays,
-                    separateTravelTo,
-                    separateTravelFrom);
-                InitializeActualsFromPlanned(dayData);
+                    i, // Use chronological index 'i'
+                    actualDayCountInSchedule, // Use the count of days we are actually iterating over
+                    resource.SeparateTravelTo,
+                    resource.SeparateTravelFrom);
+
+                // DO NOT CALL InitializeActualsFromPlanned(dayData) HERE ANYMORE.
+                // CommissioningResource.InitializeFromSchedule() is now responsible
+                // for unconditionally setting Actuals from its calculated Planned values.
             }
         }
     }

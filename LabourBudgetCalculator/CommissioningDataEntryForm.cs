@@ -6,7 +6,8 @@ using System.Windows.Forms;
 using TimeExpenseCalculator.Models;
 using TimeExpenseCalculator.Helpers;
 using LabourBudgetCalculator.Models;
-using LabourBudgetCalculator.Helpers; // Added for CommissioningDataManager
+using LabourBudgetCalculator.Helpers; 
+
 
 namespace LabourBudgetCalculator
 {
@@ -20,6 +21,9 @@ namespace LabourBudgetCalculator
         private Timer autoSaveTimer;
         private Button btnViewResults;
         private CommissioningResultsWindow _resultsWindow;
+        private Timer scheduleUpdateTimer;
+        private CommissioningResource pendingUpdateResource;
+        private TabPage pendingUpdateTabPage;
 
         public CommissioningDataEntryForm(CommissioningProject project)
         {
@@ -33,6 +37,7 @@ namespace LabourBudgetCalculator
             LoadData();
             SetupControls();
             SetupAutoSave();
+            SetupScheduleUpdateTimer();
         }
 
         private void SetupForm()
@@ -72,7 +77,46 @@ namespace LabourBudgetCalculator
             btnDeleteResource.Click += BtnDeleteResource_Click; this.Controls.Add(btnDeleteResource);
             btnViewResults = new Button { Text = "View Results", Size = new Size(120, 30), Location = new Point(btnDeleteResource.Right + 6, btnDeleteResource.Top), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
             btnViewResults.Click += BtnViewResults_Click; this.Controls.Add(btnViewResults);
-            this.Resize += (s, a) => { btnAddResource.Top = this.ClientSize.Height - 55; btnDeleteResource.Top = btnAddResource.Top; btnViewResults.Top = btnAddResource.Top; };
+
+            Button btnReset = new Button
+            {
+                Name = "btnReset",
+                Text = "Reset Values",
+                Size = new Size(120, 30),
+                Location = new Point(btnViewResults.Right + 6, btnViewResults.Top), // Position right after View Results button
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Left // Same anchoring as other bottom buttons
+            };
+
+            Button btnBackToProjects = new Button
+            {
+                Name = "btnBackToProjects",
+                Text = "Back to Projects",
+                Size = new Size(120, 30),
+                Location = new Point(btnViewResults.Right + 6, btnViewResults.Top), // Position right after View Results button
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Left // Same anchoring as other bottom buttons
+            };
+
+            btnBackToProjects.Click += BtnBackToProjects_Click;
+            this.Controls.Add(btnBackToProjects);
+
+         
+            btnReset.Click += (sender, e) =>
+            {
+                // Use the helper method instead of direct Tag access
+                CommissioningResource selectedResource = GetResourceFromTabPage(tabResources.SelectedTab);
+                if (selectedResource != null)
+                {
+                    ResetResource(selectedResource);
+                }
+            };
+            this.Controls.Add(btnReset);
+
+            this.Resize += (s, a) => {
+                btnAddResource.Top = this.ClientSize.Height - 55;
+                btnDeleteResource.Top = btnAddResource.Top;
+                btnViewResults.Top = btnAddResource.Top;
+                btnBackToProjects.Top = btnAddResource.Top; // Add this line
+            };
 
             if (currentProject.Resources != null && currentProject.Resources.Any())
             {
@@ -87,12 +131,128 @@ namespace LabourBudgetCalculator
             if (tabResources.TabPages.Count > 0) tabResources.SelectedIndex = 0;
         }
 
+        private void BtnBackToProjects_Click(object sender, EventArgs e)
+        {
+            // Check if there are unsaved changes
+            bool hasUnsavedChanges = currentProject.IsDirty ||
+                                    (currentProject.Resources != null && currentProject.Resources.Any(r => r.IsDirty));
+
+            if (hasUnsavedChanges)
+            {
+                DialogResult result = MessageBox.Show(
+                    "You have unsaved changes. Do you want to save before going back to project selection?",
+                    "Unsaved Changes",
+                    MessageBoxButtons.YesNoCancel,
+                    MessageBoxIcon.Question);
+
+                if (result == DialogResult.Cancel)
+                {
+                    return; // User cancelled, stay on current form
+                }
+                else if (result == DialogResult.Yes)
+                {
+                    // Save before leaving
+                    SaveProjectData(true);
+                }
+                // If No, proceed without saving
+            }
+
+            try
+            {
+                // Stop timers before closing
+                autoSaveTimer?.Stop();
+                scheduleUpdateTimer?.Stop();
+
+                // Close results window if open
+                _resultsWindow?.Close();
+
+                // Hide current form
+                this.Hide();
+
+                // Show the project selection form
+                CommissioningProjectSelectionForm projectSelectionForm = new CommissioningProjectSelectionForm();
+                projectSelectionForm.ShowDialog();
+
+                // Close current form after project selection form closes
+                this.Close();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error returning to project selection: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void SetupScheduleUpdateTimer()
+        {
+            if (scheduleUpdateTimer != null)
+            {
+                scheduleUpdateTimer.Stop();
+                scheduleUpdateTimer.Dispose();
+            }
+
+            scheduleUpdateTimer = new Timer();
+            scheduleUpdateTimer.Interval = 500; // Wait 500ms after last change
+            scheduleUpdateTimer.Tick += ScheduleUpdateTimer_Tick;
+        }
+
+        private void ScheduleUpdateTimer_Tick(object sender, EventArgs e)
+        {
+            scheduleUpdateTimer.Stop();
+
+            if (pendingUpdateResource != null && pendingUpdateTabPage != null)
+            {
+                // Actually perform the schedule regeneration
+                pendingUpdateResource.InitializeFromSchedule();
+                RegenerateSchedule(pendingUpdateTabPage, pendingUpdateResource);
+
+                // Clear pending updates
+                pendingUpdateResource = null;
+                pendingUpdateTabPage = null;
+            }
+        }
+
+        private void QueueScheduleUpdate(TabPage tabPage, CommissioningResource resource)
+        {
+            // Initialize timer if it's null
+            if (scheduleUpdateTimer == null)
+            {
+                SetupScheduleUpdateTimer();
+            }
+
+            // Stop any existing timer
+            scheduleUpdateTimer.Stop();
+
+            // Store the pending update
+            pendingUpdateTabPage = tabPage;
+            pendingUpdateResource = resource;
+
+            // Start the timer
+            scheduleUpdateTimer.Start();
+        }
+
         private void CreateResourceTab(CommissioningResource resource)
         {
-            TabPage tabPage = new TabPage(string.IsNullOrWhiteSpace(resource.TechnicianName) ? "New Resource" : resource.TechnicianName) { Tag = resource, AutoScroll = true };
+            TabPage tabPage = new TabPage(string.IsNullOrWhiteSpace(resource.TechnicianName) ? "New Resource" : resource.TechnicianName)
+            {
+                AutoScroll = true
+            };
+
+            // Set up the Tag structure immediately with the dictionary
+            var tagData = new Dictionary<string, object>();
+            tagData["resource"] = resource;
+            tabPage.Tag = tagData;
+
             CreateResourceFormContent(tabPage, resource);
             PopulateTabDropdowns(tabPage, resource);
             LoadResourceDataIntoControls(resource, tabPage);
+
+            // Add the reset button to the tab
+            AddResetButton(tabPage, resource);
+
+            // Add the travel time/distance linking
+            SetupTravelTimeDistanceLink(tabPage, resource);
+
             tabResources.TabPages.Add(tabPage);
         }
 
@@ -296,7 +456,7 @@ namespace LabourBudgetCalculator
                 Maximum = 365,
                 Value = resource.DaysOnSite
             };
-            nDS.ValueChanged += (s, e) => { UpdateResourceFromUI(resource); RegenerateSchedule(tabPage, resource); };
+            nDS.ValueChanged += (s, e) => { UpdateResourceFromUI(resource); QueueScheduleUpdate(tabPage, resource); };
 
             NumericUpDown nHPD = new NumericUpDown
             {
@@ -309,7 +469,7 @@ namespace LabourBudgetCalculator
                 DecimalPlaces = 1,
                 Increment = 0.5m
             };
-            nHPD.ValueChanged += (s, e) => { UpdateResourceFromUI(resource); RegenerateSchedule(tabPage, resource); };
+            nHPD.ValueChanged += (s, e) => { UpdateResourceFromUI(resource); QueueScheduleUpdate(tabPage, resource); };
 
             DateTimePicker dtp = new DateTimePicker
             {
@@ -319,7 +479,7 @@ namespace LabourBudgetCalculator
                 Value = resource.StartDate,
                 Format = DateTimePickerFormat.Short
             };
-            dtp.ValueChanged += (s, e) => { UpdateResourceFromUI(resource); RegenerateSchedule(tabPage, resource); };
+            dtp.ValueChanged += (s, e) => { UpdateResourceFromUI(resource); QueueScheduleUpdate(tabPage, resource); };
 
             ComboBox cbST = new ComboBox
             {
@@ -328,7 +488,7 @@ namespace LabourBudgetCalculator
                 Size = new Size(100, 21),
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
-            cbST.SelectedIndexChanged += (s, e) => { UpdateResourceFromUI(resource); RegenerateSchedule(tabPage, resource); };
+            cbST.SelectedIndexChanged += (s, e) => { UpdateResourceFromUI(resource); QueueScheduleUpdate(tabPage, resource); };
 
             NumericUpDown nLD = new NumericUpDown
             {
@@ -341,7 +501,7 @@ namespace LabourBudgetCalculator
                 DecimalPlaces = 1,
                 Increment = 0.5m
             };
-            nLD.ValueChanged += (s, e) => { UpdateResourceFromUI(resource); RegenerateSchedule(tabPage, resource); };
+            nLD.ValueChanged += (s, e) => { UpdateResourceFromUI(resource); QueueScheduleUpdate(tabPage, resource); };
 
             g.Controls.AddRange(new Control[] {
         new Label { Text = "Work Days on Site:", Location = new Point(15, 25), AutoSize = true }, nDS,
@@ -366,8 +526,8 @@ namespace LabourBudgetCalculator
 
             CheckBox cSTT = new CheckBox { Name = "chkSeparateTravelTo", Text = "To", Location = new Point(220, y - 2), AutoSize = true, Checked = resource.SeparateTravelTo };
             CheckBox cSTF = new CheckBox { Name = "chkSeparateTravelFrom", Text = "From", Location = new Point(300, y - 2), AutoSize = true, Checked = resource.SeparateTravelFrom };
-            cSTT.CheckedChanged += (s, e) => { UpdateResourceFromUI(resource); RegenerateSchedule(tabPage, resource); };
-            cSTF.CheckedChanged += (s, e) => { UpdateResourceFromUI(resource); RegenerateSchedule(tabPage, resource); };
+            cSTT.CheckedChanged += (s, e) => { UpdateResourceFromUI(resource); QueueScheduleUpdate(tabPage, resource); };
+            cSTF.CheckedChanged += (s, e) => { UpdateResourceFromUI(resource); QueueScheduleUpdate(tabPage, resource); };
             y += 30;
 
             ComboBox cbTM = new ComboBox { Name = "comboBoxTravelMethod", Location = new Point(290, y - 3), Size = new Size(60, 21), DropDownStyle = ComboBoxStyle.DropDownList };
@@ -382,7 +542,7 @@ namespace LabourBudgetCalculator
             nTT.ValueChanged += (s, e) => UpdateResourceFromUI(resource);
             y += 30;
 
-            NumericUpDown nDTD = new NumericUpDown { Name = "numDailyTravelDistance", Location = new Point(290, y - 3), Size = new Size(75, 20), Maximum = 1000, Value = resource.DailyTravelDistance };
+            NumericUpDown nDTD = new NumericUpDown { Name = "numDailyTravelDistance", Location = new Point(290, y - 3), Size = new Size(75, 20), Maximum = 1000, Increment = 15, Value = resource.DailyTravelDistance };
             nDTD.ValueChanged += (s, e) => UpdateResourceFromUI(resource);
             y += 30;
 
@@ -738,18 +898,12 @@ namespace LabourBudgetCalculator
                 }
                 else if (sender is NumericUpDown numInput)
                 {
-                    // When total planned hours/travel change, we need to update the specific breakdown in ResourceDayData.
-                    // The most straightforward way is to update the *total* input here, and then
-                    // have a method (or rely on InitializeFromSchedule if appropriate) to correctly
-                    // distribute this total into PlannedRegular, PlannedOvertime, PlannedPremium based on rules.
-                    // For now, this example directly updates PlannedRegular as a simplification.
-                    // A more robust solution would be needed for accurate breakdown based on total input.
                     if (control.Name.StartsWith("numPlannedHours"))
                     {
                         if (dayDataEntry.PlannedRegularLabourHours != numInput.Value)
-                        { // Simplified: updates regular directly
+                        {
                             dayDataEntry.PlannedRegularLabourHours = numInput.Value;
-                            dayDataEntry.PlannedOvertimeLabourHours = 0; // Assuming total input here only affects regular
+                            dayDataEntry.PlannedOvertimeLabourHours = 0;
                             dayDataEntry.PlannedPremiumLabourHours = 0;
                             changed = true;
                         }
@@ -757,7 +911,7 @@ namespace LabourBudgetCalculator
                     else if (control.Name.StartsWith("numPlannedTravel"))
                     {
                         if (dayDataEntry.PlannedRegularTravelHours != numInput.Value)
-                        { // Simplified
+                        {
                             dayDataEntry.PlannedRegularTravelHours = numInput.Value;
                             dayDataEntry.PlannedOvertimeTravelHours = 0;
                             dayDataEntry.PlannedPremiumTravelHours = 0;
@@ -770,10 +924,23 @@ namespace LabourBudgetCalculator
                 {
                     resource.IsDirty = true;
                     currentProject.IsDirty = true;
-                    // No direct call to UpdateResourceFromUI to prevent loops. Let save/autosave handle it.
                 }
             }
             else { System.Diagnostics.Debug.WriteLine($"DailySchedulePlanned_Changed: Could not find resource or dayKey {dayKey}."); }
+        }
+
+        // Helper method to get resource from tab page with new Tag structure
+        private CommissioningResource GetResourceFromTabPage(TabPage tabPage)
+        {
+            if (tabPage.Tag is CommissioningResource resource)
+            {
+                return resource;
+            }
+            else if (tabPage.Tag is Dictionary<string, object> tagDict && tagDict.ContainsKey("resource"))
+            {
+                return tagDict["resource"] as CommissioningResource;
+            }
+            return null;
         }
 
         private void PopulateTime12HourCombo(ComboBox combo) { combo.Items.Clear(); for (int h = 0; h < 24; h++) for (int m = 0; m < 60; m += 30) combo.Items.Add(new DateTime(2000, 1, 1, h, m, 0).ToString("h:mm tt", System.Globalization.CultureInfo.InvariantCulture)); }
@@ -788,7 +955,7 @@ namespace LabourBudgetCalculator
             var dtp = FindControlInTab<DateTimePicker>(tabPage, "dtpResourceStartDate"); if (dtp != null) dtp.Value = resource.StartDate;
             var cST = FindControlInTab<ComboBox>(tabPage, "comboBoxStartTime"); if (cST != null) { PopulateTime12HourCombo(cST); if (!string.IsNullOrEmpty(resource.DefaultStartTime)) cST.SelectedItem = ConvertTo12Hour(resource.DefaultStartTime); else cST.SelectedItem = ConvertTo12Hour("07:00"); }
             var nLD = FindControlInTab<NumericUpDown>(tabPage, "numLunchDuration"); if (nLD != null) nLD.Value = resource.LunchDuration;
-            var cTM = FindControlInTab<ComboBox>(tabPage, "comboBoxTravelMethod"); if (cTM != null) { cTM.Items.Clear(); cTM.Items.AddRange(new string[] { "Driving", "Flight"}); if (!string.IsNullOrEmpty(resource.TravelMethod) && cTM.Items.Contains(resource.TravelMethod)) cTM.SelectedItem = resource.TravelMethod; else cTM.SelectedIndex = 0; }
+            var cTM = FindControlInTab<ComboBox>(tabPage, "comboBoxTravelMethod"); if (cTM != null) { cTM.Items.Clear(); cTM.Items.AddRange(new string[] { "Driving", "Flight" }); if (!string.IsNullOrEmpty(resource.TravelMethod) && cTM.Items.Contains(resource.TravelMethod)) cTM.SelectedItem = resource.TravelMethod; else cTM.SelectedIndex = 0; }
         }
         private T FindControlInTab<T>(TabPage tabPage, string controlName) where T : Control => FindControlByName<T>(tabPage, controlName);
         private T FindControlByName<T>(Control parent, string name) where T : Control { if (parent == null) return null; foreach (Control c in parent.Controls) { if (c.Name == name && c is T typedControl) return typedControl; var foundChild = FindControlByName<T>(c, name); if (foundChild != null) return foundChild; } return null; }
@@ -800,7 +967,7 @@ namespace LabourBudgetCalculator
             FindControlInTab<CheckBox>(tabPage, "chkSeparateTravelTo")?.SetValue(c => c.Checked = resource.SeparateTravelTo); FindControlInTab<CheckBox>(tabPage, "chkSeparateTravelFrom")?.SetValue(c => c.Checked = resource.SeparateTravelFrom); FindControlInTab<NumericUpDown>(tabPage, "numTravelDistance")?.SetValue(c => c.Value = resource.TravelDistance); FindControlInTab<NumericUpDown>(tabPage, "numTravelTime")?.SetValue(c => c.Value = resource.TravelTime); FindControlInTab<NumericUpDown>(tabPage, "numDailyTravelDistance")?.SetValue(c => c.Value = resource.DailyTravelDistance); FindControlInTab<NumericUpDown>(tabPage, "numDailyTravelTime")?.SetValue(c => c.Value = resource.DailyTravelTime);
             FindControlInTab<NumericUpDown>(tabPage, "numFlightCost")?.SetValue(c => c.Value = resource.FlightCost); FindControlInTab<CheckBox>(tabPage, "chkRentalCarRequired")?.SetValue(c => c.Checked = resource.RentalCarRequired); FindControlInTab<NumericUpDown>(tabPage, "numRentalCarRate")?.SetValue(c => c.Value = resource.RentalCarRate); FindControlInTab<CheckBox>(tabPage, "chkHotelRequired")?.SetValue(c => c.Checked = resource.HotelRequired); FindControlInTab<NumericUpDown>(tabPage, "numHotelRate")?.SetValue(c => c.Value = resource.HotelRate); FindControlInTab<NumericUpDown>(tabPage, "numMileageRate")?.SetValue(c => c.Value = resource.MileageRate); FindControlInTab<NumericUpDown>(tabPage, "numPerDiemRate")?.SetValue(c => c.Value = resource.PerDiemRate); FindControlInTab<NumericUpDown>(tabPage, "numOtherExpenses")?.SetValue(c => c.Value = resource.OtherExpenses);
             FindControlInTab<TextBox>(tabPage, "txtTechnicianName")?.SetValue(c => c.Text = resource.TechnicianName ?? "");
-            RegenerateSchedule(tabPage, resource);
+            QueueScheduleUpdate(tabPage, resource);
         }
         private void BtnAddResource_Click(object sender, EventArgs e) => AddNewResource();
         private void AddNewResource()
@@ -823,12 +990,27 @@ namespace LabourBudgetCalculator
             currentProject.IsDirty = true;
         }
         private void BtnDeleteResource_Click(object sender, EventArgs e)
-        { /* ... same as corrected_csharp_code_v6 ... */
-            if (tabResources.SelectedTab == null || tabResources.TabPages.Count <= 1) { MessageBox.Show("At least one resource is required or no resource is selected.", "Cannot Delete", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
-            if (MessageBox.Show("Are you sure you want to delete this resource?", "Confirm Delete", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes) { if (tabResources.SelectedTab.Tag is CommissioningResource rtr) currentProject.Resources.Remove(rtr); tabResources.TabPages.Remove(tabResources.SelectedTab); currentProject.IsDirty = true; }
+        {
+            if (tabResources.SelectedTab == null || tabResources.TabPages.Count <= 1)
+            {
+                MessageBox.Show("At least one resource is required or no resource is selected.", "Cannot Delete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (MessageBox.Show("Are you sure you want to delete this resource?", "Confirm Delete", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+            {
+                // Use the helper method instead of direct Tag access
+                CommissioningResource rtr = GetResourceFromTabPage(tabResources.SelectedTab);
+                if (rtr != null)
+                {
+                    currentProject.Resources.Remove(rtr);
+                }
+                tabResources.TabPages.Remove(tabResources.SelectedTab);
+                currentProject.IsDirty = true;
+            }
         }
 
-        
+
         private void SyncExpenseProperties()
         {
             foreach (TabPage tab in tabResources.TabPages)
@@ -861,7 +1043,8 @@ namespace LabourBudgetCalculator
         {
             if (resource == null) return;
 
-            TabPage ct = tabResources.TabPages.Cast<TabPage>().FirstOrDefault(t => t.Tag == resource);
+            // Use the helper method instead of direct Tag comparison
+            TabPage ct = tabResources.TabPages.Cast<TabPage>().FirstOrDefault(t => GetResourceFromTabPage(t) == resource);
             if (ct == null) return;
 
             bool spc = false;
@@ -923,12 +1106,11 @@ namespace LabourBudgetCalculator
                 ct.Text = string.IsNullOrWhiteSpace(txtTechName.Text) ? "New Resource" : txtTechName.Text;
             }
 
-            // Expense properties - ensure these are correctly synchronized
+            // Expense properties
             var cRCR = FindControlInTab<CheckBox>(ct, "chkRentalCarRequired");
             if (cRCR != null)
             {
                 resource.RentalCarRequired = cRCR.Checked;
-                System.Diagnostics.Debug.WriteLine($"Set RentalCarRequired to {cRCR.Checked} for {resource.TechnicianName}");
             }
 
             var nRCR = FindControlInTab<NumericUpDown>(ct, "numRentalCarRate");
@@ -941,7 +1123,6 @@ namespace LabourBudgetCalculator
             if (cHR != null)
             {
                 resource.HotelRequired = cHR.Checked;
-                System.Diagnostics.Debug.WriteLine($"Set HotelRequired to {cHR.Checked} for {resource.TechnicianName}");
             }
 
             var nHR = FindControlInTab<NumericUpDown>(ct, "numHotelRate");
@@ -979,7 +1160,6 @@ namespace LabourBudgetCalculator
             if (cbTM?.SelectedItem != null)
             {
                 resource.TravelMethod = cbTM.SelectedItem.ToString();
-                System.Diagnostics.Debug.WriteLine($"Set TravelMethod to {resource.TravelMethod} for {resource.TechnicianName}");
             }
 
             var nTD = FindControlInTab<NumericUpDown>(ct, "numTravelDistance");
@@ -1009,8 +1189,7 @@ namespace LabourBudgetCalculator
             // If schedule parameters changed, regenerate the schedule
             if (spc)
             {
-                resource.InitializeFromSchedule();
-                RegenerateSchedule(ct, resource);
+                QueueScheduleUpdate(ct, resource);
             }
 
             resource.IsDirty = true;
@@ -1021,12 +1200,251 @@ namespace LabourBudgetCalculator
         { /* ... same as corrected_csharp_code_v6 ... */
             try { if (tabResources.SelectedTab?.Tag is CommissioningResource cr) UpdateResourceFromUI(cr); foreach (var res in currentProject.Resources) if (res.IsDirty || res.DailyData == null || !res.DailyData.Any() || res.DailyData.Values.Any(d => d.Date == DateTime.MinValue)) res.InitializeFromSchedule(); currentProject.CalculateTotals(); CommissioningDataManager.Instance.SaveCurrentProject(); if (showUserMessage) { } } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Error saving: {ex.Message}"); if (showUserMessage) MessageBox.Show($"Failed to save: {ex.Message}", "Save Error", MessageBoxButtons.OK, MessageBoxIcon.Error); }
         }
-        
-        
-        
-        
-        
-        
+
+
+        // Add this method to CommissioningDataEntryForm
+        private void ResetResource(CommissioningResource resource)
+        {
+            if (resource == null) return;
+
+            // Confirm with the user
+            DialogResult result = MessageBox.Show(
+                $"Are you sure you want to reset all values for {resource.TechnicianName} to default?",
+                "Confirm Reset",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (result != DialogResult.Yes)
+                return;
+
+            // Use the helper method instead of direct Tag comparison
+            TabPage tab = tabResources.TabPages.Cast<TabPage>().FirstOrDefault(t => GetResourceFromTabPage(t) == resource);
+            if (tab == null) return;
+
+            // Get the current rate sheet for defaults
+            ComboBox comboRateSheet = FindControlInTab<ComboBox>(tab, "comboBoxRateSheet");
+            string rateSheetName = null;
+            if (comboRateSheet?.SelectedItem != null)
+            {
+                rateSheetName = comboRateSheet.SelectedItem.ToString();
+            }
+
+            RateSheet selectedRateSheet = null;
+            if (!string.IsNullOrEmpty(rateSheetName))
+            {
+                selectedRateSheet = rateSheets.FirstOrDefault(rs => rs.Name == rateSheetName);
+            }
+
+            // Reset basic properties to defaults - these are directly applied to controls
+            var nDS = FindControlInTab<NumericUpDown>(tab, "numDaysOnSite");
+            if (nDS != null) nDS.Value = 5;
+
+            var nHPD = FindControlInTab<NumericUpDown>(tab, "numHoursPerDay");
+            if (nHPD != null) nHPD.Value = 8m;
+
+            var dtp = FindControlInTab<DateTimePicker>(tab, "dtpResourceStartDate");
+            if (dtp != null) dtp.Value = DateTime.Today;
+
+            var cbST = FindControlInTab<ComboBox>(tab, "comboBoxStartTime");
+            if (cbST != null && cbST.Items.Count > 0)
+            {
+                // Find "7:00 AM" in the combo box items
+                for (int i = 0; i < cbST.Items.Count; i++)
+                {
+                    if (cbST.Items[i].ToString().Contains("7:00"))
+                    {
+                        cbST.SelectedIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            var nLD = FindControlInTab<NumericUpDown>(tab, "numLunchDuration");
+            if (nLD != null) nLD.Value = 0.5m;
+
+            var numDiscount = FindControlInTab<NumericUpDown>(tab, "numDiscount");
+            if (numDiscount != null) numDiscount.Value = 0;
+
+            var chkEmergency = FindControlInTab<CheckBox>(tab, "chkEmergency");
+            if (chkEmergency != null) chkEmergency.Checked = false;
+
+            // Reset travel properties
+            var cSTT = FindControlInTab<CheckBox>(tab, "chkSeparateTravelTo");
+            if (cSTT != null) cSTT.Checked = false;
+
+            var cSTF = FindControlInTab<CheckBox>(tab, "chkSeparateTravelFrom");
+            if (cSTF != null) cSTF.Checked = false;
+
+            var cbTM = FindControlInTab<ComboBox>(tab, "comboBoxTravelMethod");
+            if (cbTM != null && cbTM.Items.Count > 0)
+            {
+                for (int i = 0; i < cbTM.Items.Count; i++)
+                {
+                    if (cbTM.Items[i].ToString() == "Driving")
+                    {
+                        cbTM.SelectedIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            var nTD = FindControlInTab<NumericUpDown>(tab, "numTravelDistance");
+            if (nTD != null) nTD.Value = 0;
+
+            var nTT = FindControlInTab<NumericUpDown>(tab, "numTravelTime");
+            if (nTT != null) nTT.Value = 0;
+
+            var nDTD = FindControlInTab<NumericUpDown>(tab, "numDailyTravelDistance");
+            if (nDTD != null) nDTD.Value = 0;
+
+            var nDTT = FindControlInTab<NumericUpDown>(tab, "numDailyTravelTime");
+            if (nDTT != null) nDTT.Value = 0;
+
+            // Reset expense properties
+            var nFC = FindControlInTab<NumericUpDown>(tab, "numFlightCost");
+            if (nFC != null) nFC.Value = selectedRateSheet?.FlightCost ?? 0;
+
+            var cRCR = FindControlInTab<CheckBox>(tab, "chkRentalCarRequired");
+            if (cRCR != null) cRCR.Checked = false;
+
+            var nRCR = FindControlInTab<NumericUpDown>(tab, "numRentalCarRate");
+            if (nRCR != null) nRCR.Value = selectedRateSheet?.RentalCarRate ?? 0;
+
+            var cHR = FindControlInTab<CheckBox>(tab, "chkHotelRequired");
+            if (cHR != null) cHR.Checked = false;
+
+            var nHR = FindControlInTab<NumericUpDown>(tab, "numHotelRate");
+            if (nHR != null) nHR.Value = selectedRateSheet?.HotelCost ?? 0;
+
+            var nMR = FindControlInTab<NumericUpDown>(tab, "numMileageRate");
+            if (nMR != null) nMR.Value = selectedRateSheet?.MileageRate ?? 0;
+
+            var nPDR = FindControlInTab<NumericUpDown>(tab, "numPerDiemRate");
+            if (nPDR != null) nPDR.Value = selectedRateSheet?.PerDiemRate ?? 0;
+
+            var nOE = FindControlInTab<NumericUpDown>(tab, "numOtherExpenses");
+            if (nOE != null) nOE.Value = 0;
+
+            // Explicitly update the resource object from the UI controls
+            UpdateResourceFromUI(resource);
+
+            // Regenerate schedule with new values
+            resource.InitializeFromSchedule();
+            RegenerateSchedule(tab, resource);
+
+            MessageBox.Show(
+                $"Values for {resource.TechnicianName} have been reset to default.",
+                "Reset Complete",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+
+        // Add this method to add the reset button to each resource tab
+        private void AddResetButton(TabPage tabPage, CommissioningResource resource)
+        {
+            // Find a good location - perhaps in the same area as the rate sheet controls
+            GroupBox ratesGroup = FindControlInTab<GroupBox>(tabPage, "groupBoxRates");
+            if (ratesGroup == null) return;
+
+            Button btnViewResults = FindControlInTab<Button>(tabPage, "btnViewResults");
+            if (btnViewResults == null)
+            {
+                // If not found by name, try to find it among the parent controls
+                btnViewResults = this.Controls.OfType<Button>().FirstOrDefault(b => b.Text == "View Results");
+            }
+
+            // Create the button next to View Results
+            Button btnReset = new Button
+            {
+                Name = "btnReset",
+                Text = "Reset Values",
+                Location = btnViewResults != null
+                    ? new Point(btnViewResults.Right + 6, btnViewResults.Top)
+                    : new Point(12, this.ClientSize.Height - 55),
+                Size = new Size(100, 30),
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Left
+            };
+
+
+
+            // Add the click handler
+            btnReset.Click += (sender, e) => ResetResource(resource);
+
+            // Add to the tab
+            tabPage.Controls.Add(btnReset);
+        }
+
+
+
+
+        private void SetupTravelTimeDistanceLink(TabPage tabPage, CommissioningResource resource)
+        {
+            // Get the numeric up down controls for this tab
+            NumericUpDown numDailyTravelTime = FindControlInTab<NumericUpDown>(tabPage, "numDailyTravelTime");
+            NumericUpDown numDailyTravelDistance = FindControlInTab<NumericUpDown>(tabPage, "numDailyTravelDistance");
+
+            if (numDailyTravelTime == null || numDailyTravelDistance == null)
+                return;
+
+            // Create a unique flag for this tab to prevent recursive updates
+            string flagKey = $"isUpdating_{tabPage.Name}";
+
+            // Store the flag in the tab's Tag property as a dictionary
+            if (tabPage.Tag == null || !(tabPage.Tag is Dictionary<string, object>))
+            {
+                var tagData = new Dictionary<string, object>();
+                if (tabPage.Tag is CommissioningResource)
+                {
+                    tagData["resource"] = tabPage.Tag;
+                }
+                tagData[flagKey] = false;
+                tabPage.Tag = tagData;
+            }
+            else if (tabPage.Tag is Dictionary<string, object> tagDict)
+            {
+                tagDict[flagKey] = false;
+            }
+
+            // Add event handler for travel time changes
+            numDailyTravelTime.ValueChanged += (sender, e) =>
+            {
+                var tagDict = tabPage.Tag as Dictionary<string, object>;
+                bool isUpdating = tagDict != null && tagDict.ContainsKey(flagKey) && (bool)tagDict[flagKey];
+
+                if (!isUpdating)
+                {
+                    tagDict[flagKey] = true;
+                    // Convert time to distance (0.5 hours = 30 miles, which is 60 miles per hour)
+                    numDailyTravelDistance.Value = numDailyTravelTime.Value * 60;
+                    tagDict[flagKey] = false;
+
+                    // Update the resource and regenerate schedule
+                    UpdateResourceFromUI(resource);
+                    QueueScheduleUpdate(tabPage, resource);
+                }
+            };
+
+            // Add event handler for travel distance changes
+            numDailyTravelDistance.ValueChanged += (sender, e) =>
+            {
+                var tagDict = tabPage.Tag as Dictionary<string, object>;
+                bool isUpdating = tagDict != null && tagDict.ContainsKey(flagKey) && (bool)tagDict[flagKey];
+
+                if (!isUpdating)
+                {
+                    tagDict[flagKey] = true;
+                    // Convert distance to time (30 miles = 0.5 hours)
+                    numDailyTravelTime.Value = numDailyTravelDistance.Value / 60;
+                    tagDict[flagKey] = false;
+
+                    // Update the resource and regenerate schedule
+                    UpdateResourceFromUI(resource);
+                    QueueScheduleUpdate(tabPage, resource);
+                }
+            };
+        }
+
+
         private void BtnViewResults_Click(object sender, EventArgs e)
         {
             // Save current project data
@@ -1060,8 +1478,25 @@ namespace LabourBudgetCalculator
                 _resultsWindow.BringToFront();
             }
         }
-        protected override void OnFormClosing(FormClosingEventArgs e) { /* ... same as corrected_csharp_code_v6 ... */ autoSaveTimer?.Stop(); autoSaveTimer?.Dispose(); DialogResult c = MessageBox.Show("Save changes before closing?", "Confirm Close", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question); if (c == DialogResult.Yes) SaveProjectData(true); else if (c == DialogResult.Cancel) { e.Cancel = true; autoSaveTimer?.Start(); return; } _resultsWindow?.Close(); base.OnFormClosing(e); }
-    }
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            autoSaveTimer?.Stop();
+            autoSaveTimer?.Dispose();
+            scheduleUpdateTimer?.Stop();        // ADD THIS LINE
+            scheduleUpdateTimer?.Dispose();     // ADD THIS LINE
 
-    public static class ControlExtensions { public static void SetValue<T>(this T control, Action<T> action) where T : Control { if (control != null) action(control); } }
+            DialogResult c = MessageBox.Show("Save changes before closing?", "Confirm Close", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+            if (c == DialogResult.Yes) SaveProjectData(true);
+            else if (c == DialogResult.Cancel)
+            {
+                e.Cancel = true;
+                autoSaveTimer?.Start();
+                scheduleUpdateTimer?.Start();   // ADD THIS LINE
+                return;
+            }
+            _resultsWindow?.Close();
+            base.OnFormClosing(e);
+        }
+    }
+        public static class ControlExtensions { public static void SetValue<T>(this T control, Action<T> action) where T : Control { if (control != null) action(control); } }
 }
