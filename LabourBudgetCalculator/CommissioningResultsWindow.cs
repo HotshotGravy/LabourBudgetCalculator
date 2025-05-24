@@ -157,13 +157,90 @@ namespace LabourBudgetCalculator
             this.Close();
         }
 
+        // Corrected method without direct property assignments
+        private void CalculateExpenseTotalsWithMarkup()
+        {
+            if (_project == null || _project.Resources == null) return;
+
+            decimal totalExpenses = 0;
+
+            foreach (var resource in _project.Resources)
+            {
+                // Make sure expense calculations are up-to-date
+                Helpers.ExpenseCalculator.CalculateResourceExpenses(resource);
+
+                // Sum up all expenses from daily data
+                decimal hotelTotal = 0;
+                decimal rentalCarTotal = 0;
+                decimal flightTotal = 0;
+                decimal mileageTotal = 0;
+                decimal perDiemTotal = 0;
+
+                if (resource.DailyData != null)
+                {
+                    foreach (var dayData in resource.DailyData.Values)
+                    {
+                        hotelTotal += dayData.ActualHotelCost;
+                        rentalCarTotal += dayData.ActualRentalCarCost;
+                        flightTotal += dayData.ActualFlightCost;
+                        mileageTotal += dayData.ActualMileageCost;
+                        perDiemTotal += dayData.ActualPerDiemCost;
+                    }
+                }
+
+                // Apply markup to appropriate expenses
+                decimal resourceExpenses = Helpers.ExpenseCalculator.CalculateTotalExpensesWithMarkup(
+                    hotelTotal, rentalCarTotal, flightTotal, mileageTotal, perDiemTotal, resource.OtherExpenses);
+
+                totalExpenses += resourceExpenses;
+            }
+
+            // Remove the direct property assignments that caused errors
+            // The project.CalculateTotals() method called in RefreshData will handle this
+        }
+
+
         private void RefreshData()
         {
             if (_project == null || _isClosing) return;
-
             try
             {
+                // Add debug output before any processing
+                System.Diagnostics.Debug.WriteLine("===== REFRESH DATA BEGIN =====");
+
                 EnsureResourcesInitialized();
+
+                // Debug output for resources after initialization
+                System.Diagnostics.Debug.WriteLine("Resources after initialization:");
+                foreach (var resource in _project.Resources)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Resource: {resource.TechnicianName}");
+                    System.Diagnostics.Debug.WriteLine($"HotelRequired: {resource.HotelRequired}, HotelRate: {resource.HotelRate}");
+                    System.Diagnostics.Debug.WriteLine($"RentalCarRequired: {resource.RentalCarRequired}, RentalCarRate: {resource.RentalCarRate}");
+                    System.Diagnostics.Debug.WriteLine($"TravelMethod: {resource.TravelMethod}, FlightCost: {resource.FlightCost}");
+
+                    // Check first day values (if any)
+                    if (resource.DailyData != null && resource.DailyData.Any())
+                    {
+                        var firstDay = resource.DailyData.First().Value;
+                        System.Diagnostics.Debug.WriteLine($"First day BEFORE calc: Hotel={firstDay.PlannedHotelCost}, Rental={firstDay.PlannedRentalCarCost}, Flight={firstDay.PlannedFlightCost}");
+                    }
+
+                    // Calculate expenses for each resource explicitly
+                    Helpers.ExpenseCalculator.CalculateResourceExpenses(resource);
+
+                    // Check if calculation updated the values
+                    if (resource.DailyData != null && resource.DailyData.Any())
+                    {
+                        var firstDay = resource.DailyData.First().Value;
+                        System.Diagnostics.Debug.WriteLine($"First day AFTER calc: Hotel={firstDay.PlannedHotelCost}, Rental={firstDay.PlannedRentalCarCost}, Flight={firstDay.PlannedFlightCost}");
+
+                        // Also show Actual values to verify initialization
+                        System.Diagnostics.Debug.WriteLine($"First day Actuals: Hotel={firstDay.ActualHotelCost}, Rental={firstDay.ActualRentalCarCost}, Flight={firstDay.ActualFlightCost}");
+                    }
+                }
+
+                CalculateExpenseTotalsWithMarkup();
                 _project.CalculateTotals();
                 UpdateSummaryPanel();
 
@@ -179,13 +256,40 @@ namespace LabourBudgetCalculator
 
                 foreach (var resource in _project.Resources)
                 {
+                    // Apply any expense changes directly for testing
+                    // These direct assignments will help identify if it's a data issue
+                    // or a UI display issue
+                    foreach (var dayData in resource.DailyData.Values)
+                    {
+                        // Ensure actuals match planned if they're zero
+                        if (dayData.ActualHotelCost == 0)
+                            dayData.ActualHotelCost = dayData.PlannedHotelCost;
+
+                        if (dayData.ActualRentalCarCost == 0)
+                            dayData.ActualRentalCarCost = dayData.PlannedRentalCarCost;
+
+                        if (dayData.ActualFlightCost == 0)
+                            dayData.ActualFlightCost = dayData.PlannedFlightCost;
+
+                        if (dayData.ActualMileageCost == 0)
+                            dayData.ActualMileageCost = dayData.PlannedMileageCost;
+
+                        if (dayData.ActualPerDiemCost == 0)
+                            dayData.ActualPerDiemCost = dayData.PlannedPerDiemCost;
+                    }
+
                     var resourcePanel = new ResourcePanel(resource, this);
                     resourcePanel.Location = new Point(xPos, yPos);
+
+                    // Don't recalculate here since we've already done it above
+                    // Helpers.ExpenseCalculator.CalculateResourceExpenses(resource);
+
+                    // Make sure totals are updated
+                    resource.CalculateResourceTotals();
 
                     // Anchor determines how it behaves if _contentHostPanel resizes,
                     // but AutoSize on ResourcePanel primarily dictates its size based on its own content.
                     resourcePanel.Anchor = AnchorStyles.Top | AnchorStyles.Left;
-                    // Explicit Width setting for resourcePanel is still removed.
 
                     _contentHostPanel.Controls.Add(resourcePanel); // Add to _contentHostPanel
                     _resourcePanels.Add(resourcePanel);
@@ -193,6 +297,11 @@ namespace LabourBudgetCalculator
                     // The ResourcePanel's Height (due to AutoSize) will be calculated based on its content.
                     yPos += resourcePanel.Height + 10; // Stack vertically with a 10px margin
                 }
+
+                _project.CalculateTotals();
+                UpdateSummaryPanel();
+
+                System.Diagnostics.Debug.WriteLine("===== REFRESH DATA END =====");
 
                 _contentHostPanel.ResumeLayout(false); // Allow _contentHostPanel to resize based on children
                 _mainPanel.ResumeLayout(false); // Update _mainPanel to reflect _contentHostPanel's new size (for scrolling)
@@ -449,6 +558,28 @@ namespace LabourBudgetCalculator
 
             if (orderedDays.Count == 0) return;
 
+            // DEBUG EXPENSE SETTINGS
+            System.Diagnostics.Debug.WriteLine($"Resource settings for {_resource.TechnicianName}:");
+            System.Diagnostics.Debug.WriteLine($"HotelRequired: {_resource.HotelRequired}, HotelRate: {_resource.HotelRate}");
+            System.Diagnostics.Debug.WriteLine($"RentalCarRequired: {_resource.RentalCarRequired}, RentalCarRate: {_resource.RentalCarRate}");
+            System.Diagnostics.Debug.WriteLine($"TravelMethod: {_resource.TravelMethod}, FlightCost: {_resource.FlightCost}");
+
+            // Show what's in the DailyData
+            foreach (var day in orderedDays)
+            {
+                System.Diagnostics.Debug.WriteLine($"Day {day.Key}: Hotel={day.Value.PlannedHotelCost}, Rental={day.Value.PlannedRentalCarCost}, Flight={day.Value.PlannedFlightCost}");
+            }
+
+            // Make sure expense calculations are up-to-date
+            Helpers.ExpenseCalculator.CalculateResourceExpenses(_resource);
+
+            // Show what's in the DailyData AFTER calculation
+            System.Diagnostics.Debug.WriteLine("AFTER ExpenseCalculator:");
+            foreach (var day in orderedDays)
+            {
+                System.Diagnostics.Debug.WriteLine($"Day {day.Key}: Hotel={day.Value.PlannedHotelCost}, Rental={day.Value.PlannedRentalCarCost}, Flight={day.Value.PlannedFlightCost}");
+            }
+
             SetupGridStructure(orderedDays.Count);
             AddHeaders(orderedDays);
             AddDataRows(orderedDays);
@@ -487,13 +618,19 @@ namespace LabourBudgetCalculator
             {
                 var date = dayEntry.Value.Date;
                 var dayHeader = CreateLabel(date.ToString("ddd MMM dd"), true);
-                dayHeader.BackColor = SystemColors.ControlLight;
+
+                // Enhanced day header
+                dayHeader.BackColor = Color.FromArgb(230, 230, 250); // Light lavender for day headers
+                dayHeader.BorderStyle = BorderStyle.FixedSingle;
+                dayHeader.Font = new Font(dayHeader.Font, FontStyle.Bold);
+
                 _gridPanel.Controls.Add(dayHeader, col, 0);
                 _gridPanel.SetColumnSpan(dayHeader, 3);
 
-                AddCell(1, col, "Planned", true, Color.LightGray);
-                AddCell(1, col + 1, "Actual", true, Color.LightGray);
-                AddCell(1, col + 2, "Delta", true, Color.LightGray);
+                // Enhanced column headers
+                AddCell(1, col, "Planned", true, Color.FromArgb(235, 245, 255));     // Light blue for planned
+                AddCell(1, col + 1, "Actual", true, Color.FromArgb(235, 255, 235));  // Light green for actual
+                AddCell(1, col + 2, "Delta", true, Color.FromArgb(255, 255, 235));   // Light yellow for delta
 
                 col += 3;
             }
@@ -555,23 +692,73 @@ namespace LabourBudgetCalculator
             {
                 var dayData = dayEntry.Value;
                 decimal plannedValue = GetPlannedValue(dayData, dataType);
-                decimal actualValue = GetActualValue(dayData, dataType); // This is hours for service/travel
-                decimal delta;
+                decimal actualValue = GetActualValue(dayData, dataType);
 
-                // For delta calculation, if it's hours, it's actual hours - planned hours
-                // If it's cost, it's actual cost - planned cost
-                if (dataType.StartsWith("Service") || dataType.StartsWith("Travel"))
+                // For expense-related rows, ensure we're getting the latest calculated values
+                if (dataType == "Mileage" || dataType == "PerDiem" || dataType == "Flight" ||
+                    dataType == "CarRental" || dataType == "Hotel")
                 {
-                    delta = actualValue - plannedValue; // Hours delta
-                }
-                else // For expenses, values are already costs
-                {
-                    delta = actualValue - plannedValue; // Cost delta
+                    // For actual expenses, we'll use the stored values which may have been edited
+                    // For planned expenses, we'll recalculate to ensure consistency
+                    int dayIndex = orderedDays.IndexOf(dayEntry);
+                    bool isFirstDay = dayIndex == 0;
+                    bool isLastDay = dayIndex == orderedDays.Count - 1;
+
+                    // Recalculate planned expense values only when they haven't been manually edited
+                    if (dataType == "Mileage")
+                    {
+                        plannedValue = Helpers.ExpenseCalculator.CalculateMileageCost(
+                            _resource.MileageRate,
+                            _resource.TravelDistance,
+                            _resource.DailyTravelDistance,
+                            isFirstDay || isLastDay,
+                            _resource.RentalCarRequired,
+                            _resource.TravelMethod);
+                    }
+                    else if (dataType == "Hotel")
+                    {
+                        plannedValue = Helpers.ExpenseCalculator.CalculateHotelCost(
+                            _resource.HotelRate,
+                            _resource.HotelRequired,
+                            isLastDay);
+                    }
+                    else if (dataType == "CarRental")
+                    {
+                        plannedValue = Helpers.ExpenseCalculator.CalculateRentalCarCost(
+                            _resource.RentalCarRate,
+                            _resource.RentalCarRequired);
+                    }
+                    else if (dataType == "Flight")
+                    {
+                        bool isTravelToDay = _resource.SeparateTravelTo && isFirstDay;
+                        bool isTravelFromDay = _resource.SeparateTravelFrom && isLastDay;
+
+                        plannedValue = Helpers.ExpenseCalculator.CalculateFlightCost(
+                            _resource.FlightCost,
+                            _resource.TravelMethod,
+                            isTravelToDay || isTravelFromDay,
+                            isFirstDay,
+                            isLastDay,
+                            _resource.SeparateTravelTo,
+                            _resource.SeparateTravelFrom);
+                    }
+                    else if (dataType == "PerDiem")
+                    {
+                        decimal laborHours = dayData.GetPlannedLabourHoursTotal();
+                        decimal travelHours = dayData.GetPlannedTravelHoursTotal();
+
+                        plannedValue = Helpers.ExpenseCalculator.CalculatePerDiemCost(
+                            _resource.PerDiemRate,
+                            laborHours,
+                            travelHours);
+                    }
                 }
 
-                AddValueCell(row, col, plannedValue, false, dataType); // Pass dataType for formatting
+                decimal delta = actualValue - plannedValue;
+
+                AddValueCell(row, col, plannedValue, false, dataType);
                 AddEditableCell(row, col + 1, actualValue, dataType, dayEntry.Key, dayData);
-                AddDeltaCell(row, col + 2, delta, dataType); // Pass dataType for formatting
+                AddDeltaCell(row, col + 2, delta, dataType);
 
                 col += 3;
             }
@@ -626,6 +813,7 @@ namespace LabourBudgetCalculator
         }
 
         // Modified AddValueCell to accept dataType for formatting
+        // Modified AddValueCell to accept dataType for formatting and make non-zero hours bold
         private void AddValueCell(int row, int col, decimal value, bool isBold, string dataType, Color? backColor = null)
         {
             var label = new Label();
@@ -633,6 +821,14 @@ namespace LabourBudgetCalculator
             if (dataType != null && (dataType.StartsWith("Service") || dataType.StartsWith("Travel")))
             {
                 label.Text = value.ToString("F1"); // Format as hours with 1 decimal
+
+                // Make non-zero hour values bold
+                if (value != 0)
+                {
+                    // If already supposed to be bold due to isBold parameter, keep it bold
+                    // Otherwise, make it bold because value is non-zero
+                    isBold = true;
+                }
             }
             else
             {
@@ -649,16 +845,23 @@ namespace LabourBudgetCalculator
             _gridPanel.Controls.Add(label, col, row);
         }
 
-        private void AddEditableCell(int row, int col, decimal value, string dataType, int dayKey, ResourceDayData dayData)
+        private void AddEditableCell(int row, int col, decimal value, string dataType, int dayKey, ResourceDayData dayData, Color? backColor = null)
         {
             var editableCell = new EditableCell(value, dataType, dayKey, dayData, _resource, this);
             editableCell.Dock = DockStyle.Fill;
 
-            string cellKey = string.Format("{0}_{1}_{2}", dayKey, dataType, row); // Make key more unique if needed
+            // Set background color if provided
+            if (backColor.HasValue)
+            {
+                editableCell.BackColor = backColor.Value;
+            }
+
+            string cellKey = string.Format("{0}_{1}_{2}", dayKey, dataType, row);
             _editableCells[cellKey] = editableCell;
 
             _gridPanel.Controls.Add(editableCell, col, row);
         }
+
 
         // Modified AddDeltaCell to accept dataType for formatting
         private void AddDeltaCell(int row, int col, decimal delta, string dataType, Color? backColor = null)
@@ -676,7 +879,15 @@ namespace LabourBudgetCalculator
 
             label.TextAlign = ContentAlignment.MiddleRight;
             label.Dock = DockStyle.Fill;
-            label.ForeColor = delta == 0 ? Color.Black : (delta > 0 ? Color.Red : Color.Green);
+
+            // Enhanced delta coloring - green for positive, red for negative
+            if (delta > 0)
+                label.ForeColor = Color.DarkGreen;
+            else if (delta < 0)
+                label.ForeColor = Color.DarkRed;
+            else
+                label.ForeColor = Color.Black;
+
             if (backColor.HasValue)
                 label.BackColor = backColor.Value;
 
@@ -749,7 +960,7 @@ namespace LabourBudgetCalculator
                            (dayData.ActualPremiumTravelHours * GetPremiumTravelRate());
                 }
             }
-            else // Expenses
+            else // Expenses - use values already calculated
             {
                 if (isPlanned)
                 {
@@ -783,9 +994,11 @@ namespace LabourBudgetCalculator
 
         internal void NotifyValueChanged()
         {
+            // Recalculate expenses when values change
+            Helpers.ExpenseCalculator.CalculateResourceExpenses(_resource);
+
             UpdateTotalLabel();
             _parentWindow.MarkProjectDirty();
-            // _parentWindow.SaveData(); // Consider if auto-save on every change is desired or too frequent
         }
 
         internal void AppendCSVData(StringBuilder sb)
@@ -797,9 +1010,33 @@ namespace LabourBudgetCalculator
                 .OrderBy(kvp => kvp.Value.Date)
                 .ToList();
 
+            // Ensure expense calculations are up-to-date before exporting
+            Helpers.ExpenseCalculator.CalculateResourceExpenses(_resource);
+
             foreach (var dayEntry in orderedDays)
             {
                 var dayData = dayEntry.Value;
+
+                // Calculate service and travel costs with current rates
+                decimal laborCost = (dayData.ActualRegularLabourHours * GetRegularLabourRate()) +
+                                  (dayData.ActualOvertimeLabourHours * GetOvertimeLabourRate()) +
+                                  (dayData.ActualPremiumLabourHours * GetPremiumLabourRate());
+
+                decimal travelCost = (dayData.ActualRegularTravelHours * GetRegularTravelRate()) +
+                                   (dayData.ActualOvertimeTravelHours * GetOvertimeTravelRate()) +
+                                   (dayData.ActualPremiumTravelHours * GetPremiumTravelRate());
+
+                // Get expense values
+                decimal mileageCost = dayData.ActualMileageCost;
+                decimal perDiemCost = dayData.ActualPerDiemCost;
+                decimal flightCost = dayData.ActualFlightCost;
+                decimal rentalCarCost = dayData.ActualRentalCarCost;
+                decimal hotelCost = dayData.ActualHotelCost;
+
+                // Calculate day total including expenses
+                decimal dayTotal = laborCost + travelCost + mileageCost + perDiemCost +
+                                 flightCost + rentalCarCost + hotelCost;
+
                 var line = string.Format("{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14}",
                     EscapeCSV(_resource.TechnicianName),
                     dayData.Date.ToShortDateString(),
@@ -810,12 +1047,12 @@ namespace LabourBudgetCalculator
                     dayData.ActualRegularTravelHours,
                     dayData.ActualOvertimeTravelHours,
                     dayData.ActualPremiumTravelHours,
-                    dayData.ActualMileageCost,
-                    dayData.ActualPerDiemCost,
-                    dayData.ActualFlightCost,
-                    dayData.ActualRentalCarCost,
-                    dayData.ActualHotelCost,
-                    CalculateDayTotal(dayData, false)
+                    mileageCost,
+                    perDiemCost,
+                    flightCost,
+                    rentalCarCost,
+                    hotelCost,
+                    dayTotal
                 );
                 sb.AppendLine(line);
             }
@@ -856,28 +1093,44 @@ namespace LabourBudgetCalculator
             InitializeControls();
         }
 
+        public override Color BackColor
+        {
+            get { return base.BackColor; }
+            set
+            {
+                base.BackColor = value;
+                if (_label != null)
+                    _label.BackColor = value;
+            }
+        }
+
         private void InitializeControls()
         {
             _label = new Label();
 
-            // *** CHANGE 1: Conditional formatting for initial display ***
+            // Conditional formatting for initial display
             if (_dataType.StartsWith("Service") || _dataType.StartsWith("Travel"))
             {
                 _label.Text = _value.ToString("F1"); // Hours format
+
+                // Make non-zero values bold
+                if (_value != 0)
+                {
+                    _label.Font = new Font(_label.Font, FontStyle.Bold);
+                }
             }
             else
             {
                 _label.Text = _value.ToString("C2"); // Currency format
             }
-            // *** The problematic overriding line `_label.Text = _value.ToString("C2");` that was here previously is now effectively handled by the else block above. ***
 
             _label.TextAlign = ContentAlignment.MiddleRight;
             _label.Dock = DockStyle.Fill;
             _label.Cursor = Cursors.Hand;
             _label.MouseClick += Label_MouseClick;
 
+            // Rest of the method remains the same
             _textBox = new TextBox();
-            // Set TextBox initial text based on type as well for consistency
             if (_dataType.StartsWith("Service") || _dataType.StartsWith("Travel"))
             {
                 _textBox.Text = _value.ToString("F1");
@@ -937,10 +1190,13 @@ namespace LabourBudgetCalculator
                     {
                         _value = newValue;
                         UpdateDayData(newValue);
-                        // *** CHANGE 2: Conditional formatting after edit ***
+                        // Conditional formatting after edit
                         if (_dataType.StartsWith("Service") || _dataType.StartsWith("Travel"))
                         {
                             _label.Text = _value.ToString("F1"); // Hours format
+
+                            // Make non-zero values bold after edit
+                            _label.Font = new Font(_label.Font, newValue != 0 ? FontStyle.Bold : FontStyle.Regular);
                         }
                         else
                         {
@@ -949,15 +1205,32 @@ namespace LabourBudgetCalculator
                         _parentPanel.NotifyValueChanged();
                     }
                 }
-                // If parsing fails, revert to original value display
                 else
                 {
-                    if (_dataType.StartsWith("Service") || _dataType.StartsWith("Travel")) { _label.Text = _value.ToString("F1"); } else { _label.Text = _value.ToString("C2"); }
+                    if (_dataType.StartsWith("Service") || _dataType.StartsWith("Travel"))
+                    {
+                        _label.Text = _value.ToString("F1");
+                        // Restore bold formatting if necessary
+                        _label.Font = new Font(_label.Font, _value != 0 ? FontStyle.Bold : FontStyle.Regular);
+                    }
+                    else
+                    {
+                        _label.Text = _value.ToString("C2");
+                    }
                 }
             }
             else // If not saving (e.g. Escape pressed), revert display
             {
-                if (_dataType.StartsWith("Service") || _dataType.StartsWith("Travel")) { _label.Text = _value.ToString("F1"); } else { _label.Text = _value.ToString("C2"); }
+                if (_dataType.StartsWith("Service") || _dataType.StartsWith("Travel"))
+                {
+                    _label.Text = _value.ToString("F1");
+                    // Restore bold formatting if necessary
+                    _label.Font = new Font(_label.Font, _value != 0 ? FontStyle.Bold : FontStyle.Regular);
+                }
+                else
+                {
+                    _label.Text = _value.ToString("C2");
+                }
             }
 
 
@@ -965,6 +1238,7 @@ namespace LabourBudgetCalculator
             _label.Visible = true;
         }
 
+        // Modify the UpdateDayData method in the EditableCell class
         private void UpdateDayData(decimal newValue)
         {
             // For service and travel, the value IS the hours (not cost)
@@ -981,8 +1255,25 @@ namespace LabourBudgetCalculator
             else if (_dataType == "CarRental") _dayData.ActualRentalCarCost = newValue;
             else if (_dataType == "Hotel") _dayData.ActualHotelCost = newValue;
 
+            // When hours change, per diem may need to be recalculated
+            if (_dataType.StartsWith("Service") || _dataType.StartsWith("Travel"))
+            {
+                // Only update per diem if using planned values
+                if (_dayData.ActualPerDiemCost == _dayData.PlannedPerDiemCost)
+                {
+                    decimal laborHours = _dayData.ActualRegularLabourHours +
+                                        _dayData.ActualOvertimeLabourHours +
+                                        _dayData.ActualPremiumLabourHours;
+                    decimal travelHours = _dayData.ActualRegularTravelHours +
+                                         _dayData.ActualOvertimeTravelHours +
+                                         _dayData.ActualPremiumTravelHours;
+
+                    _dayData.ActualPerDiemCost = Helpers.ExpenseCalculator.CalculatePerDiemCost(
+                        _resource.PerDiemRate, laborHours, travelHours);
+                }
+            }
+
             _resource.IsDirty = true; // Mark resource as dirty as actuals have changed
-            // Project totals will be recalculated before saving or when summary is updated
         }
 
         private void TextBox_KeyPress(object sender, KeyPressEventArgs e)

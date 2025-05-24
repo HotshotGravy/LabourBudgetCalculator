@@ -103,6 +103,7 @@
     </Compile>
     <Compile Include="Helpers\CommissioningDataManager.cs" />
     <Compile Include="Helpers\DataManager.cs" />
+    <Compile Include="Helpers\ExpenseCalculator.cs" />
     <Compile Include="Helpers\HourCategorizerUtil.cs" />
     <Compile Include="MainForm.cs">
       <SubType>Form</SubType>

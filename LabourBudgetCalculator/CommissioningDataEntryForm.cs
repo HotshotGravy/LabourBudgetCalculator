@@ -411,41 +411,166 @@ namespace LabourBudgetCalculator
             tabPage.Controls.Add(g);
             int y = 25;
 
-            NumericUpDown nFC = new NumericUpDown { Name = "numFlightCost", Location = new Point(190, y - 3), Size = new Size(90, 20), Maximum = 10000, DecimalPlaces = 2, Value = resource.FlightCost };
+            // Flight Cost (Round Trip)
+            Label lblFlightCost = new Label
+            {
+                Text = "Flight Cost (Round Trip):",
+                Location = new Point(15, 25),
+                AutoSize = true
+            };
+
+            NumericUpDown nFC = new NumericUpDown
+            {
+                Name = "numFlightCost",
+                Location = new Point(190, y - 3),
+                Size = new Size(90, 20),
+                Maximum = 10000,
+                DecimalPlaces = 2,
+                Value = resource.FlightCost
+            };
             nFC.ValueChanged += (s, e) => UpdateResourceFromUI(resource);
             y += 30;
 
-            CheckBox cRCR = new CheckBox { Name = "chkRentalCarRequired", Text = "Rental Car", Location = new Point(15, y - 2), AutoSize = true, Checked = resource.RentalCarRequired };
-            NumericUpDown nRCR = new NumericUpDown { Name = "numRentalCarRate", Location = new Point(190, y - 3), Size = new Size(90, 20), Maximum = 500, DecimalPlaces = 2, Value = resource.RentalCarRate };
+            // Rental Car
+            CheckBox cRCR = new CheckBox
+            {
+                Name = "chkRentalCarRequired",
+                Text = "Rental Car",
+                Location = new Point(15, y - 2),
+                AutoSize = true,
+                Checked = resource.RentalCarRequired
+            };
+
+            NumericUpDown nRCR = new NumericUpDown
+            {
+                Name = "numRentalCarRate",
+                Location = new Point(190, y - 3),
+                Size = new Size(90, 20),
+                Maximum = 500,
+                DecimalPlaces = 2,
+                Value = resource.RentalCarRate
+            };
+
+            Label lblRentalPerDay = new Label
+            {
+                Text = "per day",
+                Location = new Point(285, 55),
+                AutoSize = true
+            };
+
             cRCR.CheckedChanged += (s, e) => UpdateResourceFromUI(resource);
             nRCR.ValueChanged += (s, e) => UpdateResourceFromUI(resource);
             y += 30;
 
-            CheckBox cHR = new CheckBox { Name = "chkHotelRequired", Text = "Hotel", Location = new Point(15, y - 2), AutoSize = true, Checked = resource.HotelRequired };
-            NumericUpDown nHR = new NumericUpDown { Name = "numHotelRate", Location = new Point(190, y - 3), Size = new Size(90, 20), Maximum = 1000, DecimalPlaces = 2, Value = resource.HotelRate };
+            // Hotel
+            CheckBox cHR = new CheckBox
+            {
+                Name = "chkHotelRequired",
+                Text = "Hotel",
+                Location = new Point(15, y - 2),
+                AutoSize = true,
+                Checked = resource.HotelRequired
+            };
+
+            NumericUpDown nHR = new NumericUpDown
+            {
+                Name = "numHotelRate",
+                Location = new Point(190, y - 3),
+                Size = new Size(90, 20),
+                Maximum = 1000,
+                DecimalPlaces = 2,
+                Value = resource.HotelRate
+            };
+
+            Label lblHotelPerNight = new Label
+            {
+                Text = "per night",
+                Location = new Point(285, 85),
+                AutoSize = true
+            };
+
             cHR.CheckedChanged += (s, e) => UpdateResourceFromUI(resource);
             nHR.ValueChanged += (s, e) => UpdateResourceFromUI(resource);
             y += 30;
 
-            NumericUpDown nMR = new NumericUpDown { Name = "numMileageRate", Location = new Point(190, y - 3), Size = new Size(90, 20), Maximum = 2, DecimalPlaces = 2, Increment = 0.01m, Value = resource.MileageRate };
+            // Mileage Rate
+            Label lblMileageRate = new Label
+            {
+                Text = "Mileage Rate:",
+                Location = new Point(15, 115),
+                AutoSize = true
+            };
+
+            NumericUpDown nMR = new NumericUpDown
+            {
+                Name = "numMileageRate",
+                Location = new Point(190, y - 3),
+                Size = new Size(90, 20),
+                Maximum = 2,
+                DecimalPlaces = 2,
+                Increment = 0.01m,
+                Value = resource.MileageRate
+            };
+
+            Label lblMileagePerUnit = new Label
+            {
+                Text = "per mile/km",
+                Location = new Point(285, 115),
+                AutoSize = true
+            };
+
             nMR.ValueChanged += (s, e) => UpdateResourceFromUI(resource);
             y += 30;
 
-            NumericUpDown nPDR = new NumericUpDown { Name = "numPerDiemRate", Location = new Point(190, y - 3), Size = new Size(90, 20), Maximum = 500, DecimalPlaces = 2, Value = resource.PerDiemRate };
+            // Per Diem
+            Label lblPerDiem = new Label
+            {
+                Text = "Per Diem:",
+                Location = new Point(15, 145),
+                AutoSize = true
+            };
+
+            NumericUpDown nPDR = new NumericUpDown
+            {
+                Name = "numPerDiemRate",
+                Location = new Point(190, y - 3),
+                Size = new Size(90, 20),
+                Maximum = 500,
+                DecimalPlaces = 2,
+                Value = resource.PerDiemRate
+            };
+
+            Label lblPerDiemPerDay = new Label
+            {
+                Text = "per day",
+                Location = new Point(285, 145),
+                AutoSize = true
+            };
+
             nPDR.ValueChanged += (s, e) => UpdateResourceFromUI(resource);
             y += 30;
 
-            NumericUpDown nOE = new NumericUpDown { Name = "numOtherExpenses", Location = new Point(190, y - 3), Size = new Size(90, 20), Maximum = 20000, DecimalPlaces = 2, Value = resource.OtherExpenses };
+            // Other Expenses (commented out in original code)
+            NumericUpDown nOE = new NumericUpDown
+            {
+                Name = "numOtherExpenses",
+                Location = new Point(190, y - 3),
+                Size = new Size(90, 20),
+                Maximum = 20000,
+                DecimalPlaces = 2,
+                Value = resource.OtherExpenses
+            };
             nOE.ValueChanged += (s, e) => UpdateResourceFromUI(resource);
 
+            // Add all controls to the group box
             g.Controls.AddRange(new Control[] {
-        new Label { Text = "Flight Cost (Round Trip):", Location = new Point(15, 25), AutoSize = true }, nFC,
-        cRCR, nRCR, new Label { Text = "per day", Location = new Point(285, 55), AutoSize = true },
-        cHR, nHR, new Label { Text = "per night", Location = new Point(285, 85), AutoSize = true },
-        new Label { Text = "Mileage Rate:", Location = new Point(15, 115), AutoSize = true }, nMR, new Label { Text = "per mile/km", Location = new Point(285, 115), AutoSize = true },
-        new Label { Text = "Per Diem:", Location = new Point(15, 145), AutoSize = true }, nPDR, new Label { Text = "per day", Location = new Point(285, 145), AutoSize = true },
-        // new Label { Text = "Other Fixed Expenses:", Location = new Point(15, 175), AutoSize = true }, nOE
-    });
+       lblFlightCost, nFC,
+       cRCR, nRCR, lblRentalPerDay,
+       cHR, nHR, lblHotelPerNight,
+       lblMileageRate, nMR, lblMileagePerUnit,
+       lblPerDiem, nPDR, lblPerDiemPerDay,
+       // new Label { Text = "Other Fixed Expenses:", Location = new Point(15, 175), AutoSize = true }, nOE
+   });
         }
         private void CreateScheduleSection(TabPage tabPage, CommissioningResource resource)
         {
@@ -702,28 +827,239 @@ namespace LabourBudgetCalculator
             if (tabResources.SelectedTab == null || tabResources.TabPages.Count <= 1) { MessageBox.Show("At least one resource is required or no resource is selected.", "Cannot Delete", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
             if (MessageBox.Show("Are you sure you want to delete this resource?", "Confirm Delete", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes) { if (tabResources.SelectedTab.Tag is CommissioningResource rtr) currentProject.Resources.Remove(rtr); tabResources.TabPages.Remove(tabResources.SelectedTab); currentProject.IsDirty = true; }
         }
-        private void UpdateResourceFromUI(CommissioningResource resource)
-        { /* ... same as corrected_csharp_code_v6, but ensure it triggers InitializeFromSchedule if scheduleParamsChanged ... */
-            if (resource == null) return; TabPage ct = tabResources.TabPages.Cast<TabPage>().FirstOrDefault(t => t.Tag == resource); if (ct == null) return; bool spc = false;
-            var nDS = FindControlInTab<NumericUpDown>(ct, "numDaysOnSite"); if (nDS != null && resource.DaysOnSite != (int)nDS.Value) { resource.DaysOnSite = (int)nDS.Value; spc = true; }
-            var nHPD = FindControlInTab<NumericUpDown>(ct, "numHoursPerDay"); if (nHPD != null && resource.HoursPerDay != nHPD.Value) { resource.HoursPerDay = nHPD.Value; spc = true; }
-            var dtp = FindControlInTab<DateTimePicker>(ct, "dtpResourceStartDate"); if (dtp != null && resource.StartDate.Date != dtp.Value.Date) { resource.StartDate = dtp.Value.Date; spc = true; }
-            var cbST = FindControlInTab<ComboBox>(ct, "comboBoxStartTime"); if (cbST?.SelectedItem != null && resource.DefaultStartTime != ConvertTo24Hour(cbST.SelectedItem.ToString())) { resource.DefaultStartTime = ConvertTo24Hour(cbST.SelectedItem.ToString()); spc = true; }
-            var nLD = FindControlInTab<NumericUpDown>(ct, "numLunchDuration"); if (nLD != null && resource.LunchDuration != nLD.Value) { resource.LunchDuration = nLD.Value; spc = true; }
-            var cSTT = FindControlInTab<CheckBox>(ct, "chkSeparateTravelTo"); if (cSTT != null && resource.SeparateTravelTo != cSTT.Checked) { resource.SeparateTravelTo = cSTT.Checked; spc = true; }
-            var cSTF = FindControlInTab<CheckBox>(ct, "chkSeparateTravelFrom"); if (cSTF != null && resource.SeparateTravelFrom != cSTF.Checked) { resource.SeparateTravelFrom = cSTF.Checked; spc = true; }
-            var txtTechName = FindControlInTab<TextBox>(ct, "txtTechnicianName"); if (txtTechName != null && resource.TechnicianName != txtTechName.Text) { resource.TechnicianName = txtTechName.Text; ct.Text = string.IsNullOrWhiteSpace(txtTechName.Text) ? "New Resource" : txtTechName.Text; }
 
-            // ... (rest of the properties for travel and expenses as in v6)
-            if (spc) { resource.InitializeFromSchedule(); RegenerateSchedule(ct, resource); }
-            resource.IsDirty = true; currentProject.IsDirty = true;
+        
+        private void SyncExpenseProperties()
+        {
+            foreach (TabPage tab in tabResources.TabPages)
+            {
+                if (tab.Tag is CommissioningResource resource)
+                {
+                    // Find the expense controls in this tab
+                    CheckBox chkRentalCar = FindControlInTab<CheckBox>(tab, "chkRentalCar");
+                    CheckBox chkHotel = FindControlInTab<CheckBox>(tab, "chkHotel");
+                    ComboBox comboTravelMethod = FindControlInTab<ComboBox>(tab, "comboBoxTravelMethod");
+
+                    // Update the resource properties directly
+                    if (chkRentalCar != null)
+                        resource.RentalCarRequired = chkRentalCar.Checked;
+
+                    if (chkHotel != null)
+                        resource.HotelRequired = chkHotel.Checked;
+
+                    if (comboTravelMethod != null && comboTravelMethod.SelectedItem != null)
+                        resource.TravelMethod = comboTravelMethod.SelectedItem.ToString();
+
+                    System.Diagnostics.Debug.WriteLine($"Synced expense properties for {resource.TechnicianName}: " +
+                        $"Hotel={resource.HotelRequired}, Rental={resource.RentalCarRequired}, Travel={resource.TravelMethod}");
+                }
+            }
+        }
+
+
+        private void UpdateResourceFromUI(CommissioningResource resource)
+        {
+            if (resource == null) return;
+
+            TabPage ct = tabResources.TabPages.Cast<TabPage>().FirstOrDefault(t => t.Tag == resource);
+            if (ct == null) return;
+
+            bool spc = false;
+
+            // Days and schedule configuration
+            var nDS = FindControlInTab<NumericUpDown>(ct, "numDaysOnSite");
+            if (nDS != null && resource.DaysOnSite != (int)nDS.Value)
+            {
+                resource.DaysOnSite = (int)nDS.Value;
+                spc = true;
+            }
+
+            var nHPD = FindControlInTab<NumericUpDown>(ct, "numHoursPerDay");
+            if (nHPD != null && resource.HoursPerDay != nHPD.Value)
+            {
+                resource.HoursPerDay = nHPD.Value;
+                spc = true;
+            }
+
+            var dtp = FindControlInTab<DateTimePicker>(ct, "dtpResourceStartDate");
+            if (dtp != null && resource.StartDate.Date != dtp.Value.Date)
+            {
+                resource.StartDate = dtp.Value.Date;
+                spc = true;
+            }
+
+            var cbST = FindControlInTab<ComboBox>(ct, "comboBoxStartTime");
+            if (cbST?.SelectedItem != null && resource.DefaultStartTime != ConvertTo24Hour(cbST.SelectedItem.ToString()))
+            {
+                resource.DefaultStartTime = ConvertTo24Hour(cbST.SelectedItem.ToString());
+                spc = true;
+            }
+
+            var nLD = FindControlInTab<NumericUpDown>(ct, "numLunchDuration");
+            if (nLD != null && resource.LunchDuration != nLD.Value)
+            {
+                resource.LunchDuration = nLD.Value;
+                spc = true;
+            }
+
+            var cSTT = FindControlInTab<CheckBox>(ct, "chkSeparateTravelTo");
+            if (cSTT != null && resource.SeparateTravelTo != cSTT.Checked)
+            {
+                resource.SeparateTravelTo = cSTT.Checked;
+                spc = true;
+            }
+
+            var cSTF = FindControlInTab<CheckBox>(ct, "chkSeparateTravelFrom");
+            if (cSTF != null && resource.SeparateTravelFrom != cSTF.Checked)
+            {
+                resource.SeparateTravelFrom = cSTF.Checked;
+                spc = true;
+            }
+
+            var txtTechName = FindControlInTab<TextBox>(ct, "txtTechnicianName");
+            if (txtTechName != null && resource.TechnicianName != txtTechName.Text)
+            {
+                resource.TechnicianName = txtTechName.Text;
+                ct.Text = string.IsNullOrWhiteSpace(txtTechName.Text) ? "New Resource" : txtTechName.Text;
+            }
+
+            // Expense properties - ensure these are correctly synchronized
+            var cRCR = FindControlInTab<CheckBox>(ct, "chkRentalCarRequired");
+            if (cRCR != null)
+            {
+                resource.RentalCarRequired = cRCR.Checked;
+                System.Diagnostics.Debug.WriteLine($"Set RentalCarRequired to {cRCR.Checked} for {resource.TechnicianName}");
+            }
+
+            var nRCR = FindControlInTab<NumericUpDown>(ct, "numRentalCarRate");
+            if (nRCR != null)
+            {
+                resource.RentalCarRate = nRCR.Value;
+            }
+
+            var cHR = FindControlInTab<CheckBox>(ct, "chkHotelRequired");
+            if (cHR != null)
+            {
+                resource.HotelRequired = cHR.Checked;
+                System.Diagnostics.Debug.WriteLine($"Set HotelRequired to {cHR.Checked} for {resource.TechnicianName}");
+            }
+
+            var nHR = FindControlInTab<NumericUpDown>(ct, "numHotelRate");
+            if (nHR != null)
+            {
+                resource.HotelRate = nHR.Value;
+            }
+
+            var nFC = FindControlInTab<NumericUpDown>(ct, "numFlightCost");
+            if (nFC != null)
+            {
+                resource.FlightCost = nFC.Value;
+            }
+
+            var nMR = FindControlInTab<NumericUpDown>(ct, "numMileageRate");
+            if (nMR != null)
+            {
+                resource.MileageRate = nMR.Value;
+            }
+
+            var nPDR = FindControlInTab<NumericUpDown>(ct, "numPerDiemRate");
+            if (nPDR != null)
+            {
+                resource.PerDiemRate = nPDR.Value;
+            }
+
+            var nOE = FindControlInTab<NumericUpDown>(ct, "numOtherExpenses");
+            if (nOE != null)
+            {
+                resource.OtherExpenses = nOE.Value;
+            }
+
+            // Travel settings
+            var cbTM = FindControlInTab<ComboBox>(ct, "comboBoxTravelMethod");
+            if (cbTM?.SelectedItem != null)
+            {
+                resource.TravelMethod = cbTM.SelectedItem.ToString();
+                System.Diagnostics.Debug.WriteLine($"Set TravelMethod to {resource.TravelMethod} for {resource.TechnicianName}");
+            }
+
+            var nTD = FindControlInTab<NumericUpDown>(ct, "numTravelDistance");
+            if (nTD != null)
+            {
+                resource.TravelDistance = nTD.Value;
+            }
+
+            var nTT = FindControlInTab<NumericUpDown>(ct, "numTravelTime");
+            if (nTT != null)
+            {
+                resource.TravelTime = nTT.Value;
+            }
+
+            var nDTD = FindControlInTab<NumericUpDown>(ct, "numDailyTravelDistance");
+            if (nDTD != null)
+            {
+                resource.DailyTravelDistance = nDTD.Value;
+            }
+
+            var nDTT = FindControlInTab<NumericUpDown>(ct, "numDailyTravelTime");
+            if (nDTT != null)
+            {
+                resource.DailyTravelTime = nDTT.Value;
+            }
+
+            // If schedule parameters changed, regenerate the schedule
+            if (spc)
+            {
+                resource.InitializeFromSchedule();
+                RegenerateSchedule(ct, resource);
+            }
+
+            resource.IsDirty = true;
+            currentProject.IsDirty = true;
         }
         private void SetupAutoSave() { /* ... same as corrected_csharp_code_v6 ... */ autoSaveTimer = new Timer { Interval = 15000 }; autoSaveTimer.Tick += (s, e) => SaveProjectData(false); autoSaveTimer.Start(); }
         private void SaveProjectData(bool showUserMessage)
         { /* ... same as corrected_csharp_code_v6 ... */
             try { if (tabResources.SelectedTab?.Tag is CommissioningResource cr) UpdateResourceFromUI(cr); foreach (var res in currentProject.Resources) if (res.IsDirty || res.DailyData == null || !res.DailyData.Any() || res.DailyData.Values.Any(d => d.Date == DateTime.MinValue)) res.InitializeFromSchedule(); currentProject.CalculateTotals(); CommissioningDataManager.Instance.SaveCurrentProject(); if (showUserMessage) { } } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Error saving: {ex.Message}"); if (showUserMessage) MessageBox.Show($"Failed to save: {ex.Message}", "Save Error", MessageBoxButtons.OK, MessageBoxIcon.Error); }
         }
-        private void BtnViewResults_Click(object sender, EventArgs e) { /* ... same as corrected_csharp_code_v6 ... */ SaveProjectData(false); if (currentProject == null) { MessageBox.Show("No project data.", "No Project", MessageBoxButtons.OK, MessageBoxIcon.Information); return; } if (_resultsWindow == null || _resultsWindow.IsDisposed) { _resultsWindow = new CommissioningResultsWindow(currentProject); _resultsWindow.Show(this); } else { _resultsWindow.UpdateResults(currentProject); _resultsWindow.BringToFront(); } }
+        
+        
+        
+        
+        
+        
+        private void BtnViewResults_Click(object sender, EventArgs e)
+        {
+            // Save current project data
+            SaveProjectData(false);
+
+            // Sync expense properties from UI to resource objects
+            SyncExpenseProperties();
+
+            // Verify we have a project
+            if (currentProject == null)
+            {
+                MessageBox.Show(
+                    "No project data.",
+                    "No Project",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
+            // Create or update the results window
+            if (_resultsWindow == null || _resultsWindow.IsDisposed)
+            {
+                // Create a new results window
+                _resultsWindow = new CommissioningResultsWindow(currentProject);
+                _resultsWindow.Show(this);
+            }
+            else
+            {
+                // Update the existing results window
+                _resultsWindow.UpdateResults(currentProject);
+                _resultsWindow.BringToFront();
+            }
+        }
         protected override void OnFormClosing(FormClosingEventArgs e) { /* ... same as corrected_csharp_code_v6 ... */ autoSaveTimer?.Stop(); autoSaveTimer?.Dispose(); DialogResult c = MessageBox.Show("Save changes before closing?", "Confirm Close", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question); if (c == DialogResult.Yes) SaveProjectData(true); else if (c == DialogResult.Cancel) { e.Cancel = true; autoSaveTimer?.Start(); return; } _resultsWindow?.Close(); base.OnFormClosing(e); }
     }
 

@@ -78,5 +78,20 @@ namespace LabourBudgetCalculator
                 IsDirty = true;
             }
         }
+
+        // Add this method to the CommissioningProject class if it doesn't already exist
+        public void RecalculateExpenses()
+        {
+            if (Resources == null) return;
+
+            foreach (var resource in Resources)
+            {
+                Helpers.ExpenseCalculator.CalculateResourceExpenses(resource);
+                resource.CalculateResourceTotals();
+            }
+
+            // Update project-level totals
+            CalculateTotals();
+        }
     }
 }
