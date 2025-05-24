@@ -19,6 +19,7 @@ namespace LabourBudgetCalculator
         private Button _closeButton;
         private List<ResourcePanel> _resourcePanels = new List<ResourcePanel>();
         private bool _isClosing = false;
+        private Panel _contentHostPanel;
 
         public CommissioningResultsWindow(CommissioningProject project)
         {
@@ -30,7 +31,6 @@ namespace LabourBudgetCalculator
             this.StartPosition = FormStartPosition.CenterScreen;
             this.MinimumSize = new Size(1200, 600);
 
-            // Delay initialization to avoid antivirus triggers
             this.Load += (s, e) =>
             {
                 SetupUI();
@@ -44,20 +44,17 @@ namespace LabourBudgetCalculator
             {
                 this.SuspendLayout();
 
-                // Main container - create statically
                 var mainContainer = new TableLayoutPanel();
                 mainContainer.Dock = DockStyle.Fill;
                 mainContainer.RowCount = 3;
                 mainContainer.ColumnCount = 1;
                 mainContainer.Padding = new Padding(10);
 
-                // Configure rows
                 mainContainer.RowStyles.Clear();
                 mainContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 80));
                 mainContainer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
                 mainContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
 
-                // Create panels
                 _summaryPanel = CreateSummaryPanel();
                 mainContainer.Controls.Add(_summaryPanel, 0, 0);
 
@@ -66,6 +63,19 @@ namespace LabourBudgetCalculator
                 _mainPanel.AutoScroll = true;
                 _mainPanel.BorderStyle = BorderStyle.FixedSingle;
                 mainContainer.Controls.Add(_mainPanel, 0, 1);
+
+                _contentHostPanel = new Panel
+                {
+                    Name = "contentHostPanel", // Good for debugging
+                    Dock = DockStyle.None,     // Crucial: Do not dock, allow AutoSize to control size
+                    AutoSize = true,           // Crucial: Panel will size to its content
+                    AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                    Location = Point.Empty     // Position at the top-left of _mainPanel's scrollable area
+                };
+                _mainPanel.Controls.Add(_contentHostPanel);
+
+
+
 
                 var buttonPanel = CreateButtonPanel();
                 mainContainer.Controls.Add(buttonPanel, 0, 2);
@@ -87,12 +97,10 @@ namespace LabourBudgetCalculator
             panel.ColumnCount = 5;
             panel.CellBorderStyle = TableLayoutPanelCellBorderStyle.Single;
 
-            // Configure columns
             panel.ColumnStyles.Clear();
             for (int i = 0; i < 5; i++)
                 panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20));
 
-            // Add headers
             string[] headers = { "Quoted", "Planned", "Current", "Forecast", "Delta (vs Quoted)" };
             for (int i = 0; i < headers.Length; i++)
             {
@@ -105,7 +113,6 @@ namespace LabourBudgetCalculator
                 panel.Controls.Add(label, i, 0);
             }
 
-            // Add value labels
             string[] names = { "lblQuoted", "lblPlanned", "lblCurrent", "lblForecast", "lblDelta" };
             for (int i = 0; i < names.Length; i++)
             {
@@ -160,25 +167,35 @@ namespace LabourBudgetCalculator
                 _project.CalculateTotals();
                 UpdateSummaryPanel();
 
-                _mainPanel.SuspendLayout();
-                _mainPanel.Controls.Clear();
+                _mainPanel.SuspendLayout(); // Suspend layout for the main scrolling panel
+                _contentHostPanel.SuspendLayout(); // Suspend layout for the content host
+
+                // Clear previous ResourcePanels from _contentHostPanel, not _mainPanel
+                _contentHostPanel.Controls.Clear();
                 _resourcePanels.Clear();
 
-                int yPos = 10;
+                int yPos = 10; // Initial Y position for the first ResourcePanel (adds a small top margin)
+                int xPos = 10; // Initial X position for all ResourcePanels (adds a small left margin)
+
                 foreach (var resource in _project.Resources)
                 {
                     var resourcePanel = new ResourcePanel(resource, this);
-                    resourcePanel.Location = new Point(10, yPos);
-                    resourcePanel.Width = _mainPanel.ClientSize.Width - 40;
-                    resourcePanel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+                    resourcePanel.Location = new Point(xPos, yPos);
 
-                    _mainPanel.Controls.Add(resourcePanel);
+                    // Anchor determines how it behaves if _contentHostPanel resizes,
+                    // but AutoSize on ResourcePanel primarily dictates its size based on its own content.
+                    resourcePanel.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+                    // Explicit Width setting for resourcePanel is still removed.
+
+                    _contentHostPanel.Controls.Add(resourcePanel); // Add to _contentHostPanel
                     _resourcePanels.Add(resourcePanel);
 
-                    yPos += resourcePanel.Height + 10;
+                    // The ResourcePanel's Height (due to AutoSize) will be calculated based on its content.
+                    yPos += resourcePanel.Height + 10; // Stack vertically with a 10px margin
                 }
 
-                _mainPanel.ResumeLayout();
+                _contentHostPanel.ResumeLayout(false); // Allow _contentHostPanel to resize based on children
+                _mainPanel.ResumeLayout(false); // Update _mainPanel to reflect _contentHostPanel's new size (for scrolling)
             }
             catch (Exception ex)
             {
@@ -287,12 +304,10 @@ namespace LabourBudgetCalculator
             {
                 var sb = new StringBuilder();
 
-                // Headers
                 sb.AppendLine("Resource,Date,Day,Service Reg Hours,Service OT Hours,Service Premium Hours," +
-                             "Travel Reg Hours,Travel OT Hours,Travel Premium Hours," +
-                             "Mileage,Per Diem,Flight,Car Rental,Hotel,Total");
+                                 "Travel Reg Hours,Travel OT Hours,Travel Premium Hours," +
+                                 "Mileage,Per Diem,Flight,Car Rental,Hotel,Total");
 
-                // Data
                 foreach (var resourcePanel in _resourcePanels)
                 {
                     resourcePanel.AppendCSVData(sb);
@@ -324,7 +339,6 @@ namespace LabourBudgetCalculator
         }
     }
 
-    // Resource Panel Class
     internal class ResourcePanel : Panel
     {
         private CommissioningResource _resource;
@@ -343,7 +357,7 @@ namespace LabourBudgetCalculator
             _editableCells = new Dictionary<string, EditableCell>();
 
             this.BorderStyle = BorderStyle.FixedSingle;
-            this.MinimumSize = new Size(0, 400); 
+            this.MinimumSize = new Size(0, 400);
             this.AutoSize = true;
             this.AutoSizeMode = AutoSizeMode.GrowAndShrink;
 
@@ -386,7 +400,10 @@ namespace LabourBudgetCalculator
             _totalLabel.AutoSize = true;
             _totalLabel.Font = new Font(this.Font, FontStyle.Bold);
             _totalLabel.ForeColor = SystemColors.ActiveCaptionText;
-            _totalLabel.Location = new Point(this.Width - 150, 5);
+            // Position total label dynamically or anchor to right
+            _totalLabel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            headerPanel.SizeChanged += (s, e) => { _totalLabel.Location = new Point(headerPanel.Width - _totalLabel.Width - 5, 5); };
+
 
             headerPanel.Controls.Add(_toggleButton);
             headerPanel.Controls.Add(_headerLabel);
@@ -442,27 +459,28 @@ namespace LabourBudgetCalculator
         {
             int columnCount = 1 + (dayCount * 3);
             _gridPanel.ColumnCount = columnCount;
-            _gridPanel.RowCount = 15;
+            _gridPanel.RowCount = 15; // Row for headers + 1 for sub-headers + 6 for charges + 1 subtotal + 5 for expenses + 1 subtotal + 1 total
 
             _gridPanel.ColumnStyles.Clear();
-            _gridPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+            _gridPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150)); // Row Header
 
+            _gridPanel.RowStyles.Clear(); // Clear existing row styles
             for (int i = 0; i < _gridPanel.RowCount; i++)
             {
-                _gridPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 22)); 
+                _gridPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
             }
 
             for (int i = 0; i < dayCount; i++)
             {
-                _gridPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
-                _gridPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
-                _gridPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
+                _gridPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80)); // Planned
+                _gridPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80)); // Actual
+                _gridPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80)); // Delta
             }
         }
 
         private void AddHeaders(List<KeyValuePair<int, ResourceDayData>> orderedDays)
         {
-            AddCell(0, 0, "", true);
+            AddCell(0, 0, "", true); // Top-left empty cell
 
             int col = 1;
             foreach (var dayEntry in orderedDays)
@@ -485,31 +503,20 @@ namespace LabourBudgetCalculator
         {
             int row = 2;
 
-            // Service rows
             AddDataRow(row++, "Service (Reg)", orderedDays, "ServiceReg");
             AddDataRow(row++, "Service (OT)", orderedDays, "ServiceOT");
             AddDataRow(row++, "Service (Premium)", orderedDays, "ServicePrem");
-
-            // Travel rows
             AddDataRow(row++, "Travel (Reg)", orderedDays, "TravelReg");
             AddDataRow(row++, "Travel (OT)", orderedDays, "TravelOT");
             AddDataRow(row++, "Travel (Premium)", orderedDays, "TravelPrem");
-
-            // Subtotal
-            AddSubtotalRow(row++, "Subtotals - Charges", orderedDays, true);
-
-            // Expenses
+            AddSubtotalRow(row++, "Subtotals - Charges", orderedDays, true); // Charges Subtotal
             AddDataRow(row++, "Mileage", orderedDays, "Mileage");
             AddDataRow(row++, "Per Diem", orderedDays, "PerDiem");
             AddDataRow(row++, "Flight", orderedDays, "Flight");
-            AddDataRow(row++, "Car Rental, Taxis, Train", orderedDays, "CarRental");
+            AddDataRow(row++, "Car Rental", orderedDays, "CarRental");
             AddDataRow(row++, "Hotel", orderedDays, "Hotel");
-
-            // Expense subtotal
-            AddSubtotalRow(row++, "Subtotals - Charges", orderedDays, false);
-
-            // Total
-            AddTotalsRow(row, orderedDays);
+            AddSubtotalRow(row++, "Subtotals - Expenses", orderedDays, false); // Expenses Subtotal
+            AddTotalsRow(row, orderedDays); // Grand Total
         }
 
         private void AddCell(int row, int col, string text, bool isHeader, Color? backColor = null)
@@ -548,20 +555,31 @@ namespace LabourBudgetCalculator
             {
                 var dayData = dayEntry.Value;
                 decimal plannedValue = GetPlannedValue(dayData, dataType);
-                decimal actualValue = GetActualValue(dayData, dataType);
-                decimal delta = actualValue - plannedValue;
+                decimal actualValue = GetActualValue(dayData, dataType); // This is hours for service/travel
+                decimal delta;
 
-                AddValueCell(row, col, plannedValue, false);
+                // For delta calculation, if it's hours, it's actual hours - planned hours
+                // If it's cost, it's actual cost - planned cost
+                if (dataType.StartsWith("Service") || dataType.StartsWith("Travel"))
+                {
+                    delta = actualValue - plannedValue; // Hours delta
+                }
+                else // For expenses, values are already costs
+                {
+                    delta = actualValue - plannedValue; // Cost delta
+                }
+
+                AddValueCell(row, col, plannedValue, false, dataType); // Pass dataType for formatting
                 AddEditableCell(row, col + 1, actualValue, dataType, dayEntry.Key, dayData);
-                AddDeltaCell(row, col + 2, delta);
+                AddDeltaCell(row, col + 2, delta, dataType); // Pass dataType for formatting
 
                 col += 3;
             }
         }
 
-        private void AddSubtotalRow(int row, string label, List<KeyValuePair<int, ResourceDayData>> orderedDays, bool isCharges)
+        private void AddSubtotalRow(int row, string labelText, List<KeyValuePair<int, ResourceDayData>> orderedDays, bool isCharges)
         {
-            var rowLabel = CreateLabel(label, true);
+            var rowLabel = CreateLabel(labelText, true);
             rowLabel.TextAlign = ContentAlignment.MiddleLeft;
             rowLabel.BackColor = Color.LightYellow;
             rowLabel.Padding = new Padding(5, 0, 0, 0);
@@ -575,9 +593,9 @@ namespace LabourBudgetCalculator
                 decimal actualSubtotal = CalculateSubtotal(dayData, isCharges, false);
                 decimal delta = actualSubtotal - plannedSubtotal;
 
-                AddValueCell(row, col, plannedSubtotal, true, Color.LightYellow);
-                AddValueCell(row, col + 1, actualSubtotal, true, Color.LightYellow);
-                AddDeltaCell(row, col + 2, delta, Color.LightYellow);
+                AddValueCell(row, col, plannedSubtotal, true, null, Color.LightYellow); // null for dataType as it's always currency
+                AddValueCell(row, col + 1, actualSubtotal, true, null, Color.LightYellow); // null for dataType
+                AddDeltaCell(row, col + 2, delta, null, Color.LightYellow); // null for dataType
 
                 col += 3;
             }
@@ -599,20 +617,20 @@ namespace LabourBudgetCalculator
                 decimal actualTotal = CalculateDayTotal(dayData, false);
                 decimal delta = actualTotal - plannedTotal;
 
-                AddValueCell(row, col, plannedTotal, true, Color.Yellow);
-                AddValueCell(row, col + 1, actualTotal, true, Color.Yellow);
-                AddDeltaCell(row, col + 2, delta, Color.Yellow);
+                AddValueCell(row, col, plannedTotal, true, null, Color.Yellow); // Always currency
+                AddValueCell(row, col + 1, actualTotal, true, null, Color.Yellow); // Always currency
+                AddDeltaCell(row, col + 2, delta, null, Color.Yellow); // Always currency
 
                 col += 3;
             }
         }
 
-        private void AddValueCell(int row, int col, decimal value, bool isBold, Color? backColor = null)
+        // Modified AddValueCell to accept dataType for formatting
+        private void AddValueCell(int row, int col, decimal value, bool isBold, string dataType, Color? backColor = null)
         {
             var label = new Label();
 
-            // Check if this is a service/travel row (rows 2-7) to format as hours
-            if (row >= 2 && row <= 7)
+            if (dataType != null && (dataType.StartsWith("Service") || dataType.StartsWith("Travel")))
             {
                 label.Text = value.ToString("F1"); // Format as hours with 1 decimal
             }
@@ -636,16 +654,26 @@ namespace LabourBudgetCalculator
             var editableCell = new EditableCell(value, dataType, dayKey, dayData, _resource, this);
             editableCell.Dock = DockStyle.Fill;
 
-            string cellKey = string.Format("{0}_{1}", dayKey, dataType);
+            string cellKey = string.Format("{0}_{1}_{2}", dayKey, dataType, row); // Make key more unique if needed
             _editableCells[cellKey] = editableCell;
 
             _gridPanel.Controls.Add(editableCell, col, row);
         }
 
-        private void AddDeltaCell(int row, int col, decimal delta, Color? backColor = null)
+        // Modified AddDeltaCell to accept dataType for formatting
+        private void AddDeltaCell(int row, int col, decimal delta, string dataType, Color? backColor = null)
         {
             var label = new Label();
-            label.Text = delta.ToString("C2");
+
+            if (dataType != null && (dataType.StartsWith("Service") || dataType.StartsWith("Travel")))
+            {
+                label.Text = delta.ToString("F1"); // Format as hours
+            }
+            else
+            {
+                label.Text = delta.ToString("C2"); // Format as currency
+            }
+
             label.TextAlign = ContentAlignment.MiddleRight;
             label.Dock = DockStyle.Fill;
             label.ForeColor = delta == 0 ? Color.Black : (delta > 0 ? Color.Red : Color.Green);
@@ -655,109 +683,52 @@ namespace LabourBudgetCalculator
             _gridPanel.Controls.Add(label, col, row);
         }
 
-        // Continuation of ResourcePanel class methods
-
         private decimal GetPlannedValue(ResourceDayData dayData, string dataType)
         {
-            if (dataType == "ServiceReg")
-                return dayData.PlannedRegularLabourHours; // Just hours, not × rate
-            else if (dataType == "ServiceOT")
-                return dayData.PlannedOvertimeLabourHours; // Just hours
-            else if (dataType == "ServicePrem")
-                return dayData.PlannedPremiumLabourHours; // Just hours
-            else if (dataType == "TravelReg")
-                return dayData.PlannedRegularTravelHours; // Just hours
-            else if (dataType == "TravelOT")
-                return dayData.PlannedOvertimeTravelHours; // Just hours
-            else if (dataType == "TravelPrem")
-                return dayData.PlannedPremiumTravelHours; // Just hours
-            else if (dataType == "Mileage")
-                return dayData.PlannedMileageCost;
-            else if (dataType == "PerDiem")
-                return dayData.PlannedPerDiemCost;
-            else if (dataType == "Flight")
-                return dayData.PlannedFlightCost;
-            else if (dataType == "CarRental")
-                return dayData.PlannedRentalCarCost;
-            else if (dataType == "Hotel")
-                return dayData.PlannedHotelCost;
-            else
-                return 0;
+            // Service and Travel dataType return hours
+            if (dataType == "ServiceReg") return dayData.PlannedRegularLabourHours;
+            else if (dataType == "ServiceOT") return dayData.PlannedOvertimeLabourHours;
+            else if (dataType == "ServicePrem") return dayData.PlannedPremiumLabourHours;
+            else if (dataType == "TravelReg") return dayData.PlannedRegularTravelHours;
+            else if (dataType == "TravelOT") return dayData.PlannedOvertimeTravelHours;
+            else if (dataType == "TravelPrem") return dayData.PlannedPremiumTravelHours;
+            // Expense dataType return costs
+            else if (dataType == "Mileage") return dayData.PlannedMileageCost;
+            else if (dataType == "PerDiem") return dayData.PlannedPerDiemCost;
+            else if (dataType == "Flight") return dayData.PlannedFlightCost;
+            else if (dataType == "CarRental") return dayData.PlannedRentalCarCost;
+            else if (dataType == "Hotel") return dayData.PlannedHotelCost;
+            else return 0;
         }
 
         private decimal GetActualValue(ResourceDayData dayData, string dataType)
         {
-            if (dataType == "ServiceReg")
-                return dayData.ActualRegularLabourHours; // Just hours
-            else if (dataType == "ServiceOT")
-                return dayData.ActualOvertimeLabourHours; // Just hours
-            else if (dataType == "ServicePrem")
-                return dayData.ActualPremiumLabourHours; // Just hours
-            else if (dataType == "TravelReg")
-                return dayData.ActualRegularTravelHours; // Just hours
-            else if (dataType == "TravelOT")
-                return dayData.ActualOvertimeTravelHours; // Just hours
-            else if (dataType == "TravelPrem")
-                return dayData.ActualPremiumTravelHours; // Just hours
-            else if (dataType == "Mileage")
-                return dayData.ActualMileageCost;
-            else if (dataType == "PerDiem")
-                return dayData.ActualPerDiemCost;
-            else if (dataType == "Flight")
-                return dayData.ActualFlightCost;
-            else if (dataType == "CarRental")
-                return dayData.ActualRentalCarCost;
-            else if (dataType == "Hotel")
-                return dayData.ActualHotelCost;
-            else
-                return 0;
+            // Service and Travel dataType return hours
+            if (dataType == "ServiceReg") return dayData.ActualRegularLabourHours;
+            else if (dataType == "ServiceOT") return dayData.ActualOvertimeLabourHours;
+            else if (dataType == "ServicePrem") return dayData.ActualPremiumLabourHours;
+            else if (dataType == "TravelReg") return dayData.ActualRegularTravelHours;
+            else if (dataType == "TravelOT") return dayData.ActualOvertimeTravelHours;
+            else if (dataType == "TravelPrem") return dayData.ActualPremiumTravelHours;
+            // Expense dataType return costs
+            else if (dataType == "Mileage") return dayData.ActualMileageCost;
+            else if (dataType == "PerDiem") return dayData.ActualPerDiemCost;
+            else if (dataType == "Flight") return dayData.ActualFlightCost;
+            else if (dataType == "CarRental") return dayData.ActualRentalCarCost;
+            else if (dataType == "Hotel") return dayData.ActualHotelCost;
+            else return 0;
         }
 
-        private decimal GetRegularLabourRate()
-        {
-            decimal rate = _resource.RegularLabourRate;
-            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
-            return _resource.IsEmergency ? _resource.PremiumLabourRate * discountFactor : rate * discountFactor;
-        }
-
-        private decimal GetOvertimeLabourRate()
-        {
-            decimal rate = _resource.OvertimeLabourRate;
-            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
-            return _resource.IsEmergency ? _resource.PremiumLabourRate * discountFactor : rate * discountFactor;
-        }
-
-        private decimal GetPremiumLabourRate()
-        {
-            decimal rate = _resource.PremiumLabourRate;
-            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
-            return rate * discountFactor;
-        }
-
-        private decimal GetRegularTravelRate()
-        {
-            decimal rate = _resource.RegularTravelRate;
-            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
-            return _resource.IsEmergency ? _resource.PremiumTravelRate * discountFactor : rate * discountFactor;
-        }
-
-        private decimal GetOvertimeTravelRate()
-        {
-            decimal rate = _resource.OvertimeTravelRate;
-            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
-            return _resource.IsEmergency ? _resource.PremiumTravelRate * discountFactor : rate * discountFactor;
-        }
-
-        private decimal GetPremiumTravelRate()
-        {
-            decimal rate = _resource.PremiumTravelRate;
-            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
-            return rate * discountFactor;
-        }
+        private decimal GetRegularLabourRate() { decimal rate = _resource.RegularLabourRate; decimal discountFactor = 1 - (_resource.DiscountPercent / 100m); return _resource.IsEmergency ? _resource.PremiumLabourRate * discountFactor : rate * discountFactor; }
+        private decimal GetOvertimeLabourRate() { decimal rate = _resource.OvertimeLabourRate; decimal discountFactor = 1 - (_resource.DiscountPercent / 100m); return _resource.IsEmergency ? _resource.PremiumLabourRate * discountFactor : rate * discountFactor; }
+        private decimal GetPremiumLabourRate() { decimal rate = _resource.PremiumLabourRate; decimal discountFactor = 1 - (_resource.DiscountPercent / 100m); return rate * discountFactor; }
+        private decimal GetRegularTravelRate() { decimal rate = _resource.RegularTravelRate; decimal discountFactor = 1 - (_resource.DiscountPercent / 100m); return _resource.IsEmergency ? _resource.PremiumTravelRate * discountFactor : rate * discountFactor; }
+        private decimal GetOvertimeTravelRate() { decimal rate = _resource.OvertimeTravelRate; decimal discountFactor = 1 - (_resource.DiscountPercent / 100m); return _resource.IsEmergency ? _resource.PremiumTravelRate * discountFactor : rate * discountFactor; }
+        private decimal GetPremiumTravelRate() { decimal rate = _resource.PremiumTravelRate; decimal discountFactor = 1 - (_resource.DiscountPercent / 100m); return rate * discountFactor; }
 
         private decimal CalculateSubtotal(ResourceDayData dayData, bool isCharges, bool isPlanned)
         {
-            if (isCharges)
+            if (isCharges) // Labour and Travel Charges
             {
                 if (isPlanned)
                 {
@@ -768,7 +739,7 @@ namespace LabourBudgetCalculator
                            (dayData.PlannedOvertimeTravelHours * GetOvertimeTravelRate()) +
                            (dayData.PlannedPremiumTravelHours * GetPremiumTravelRate());
                 }
-                else
+                else // Actual
                 {
                     return (dayData.ActualRegularLabourHours * GetRegularLabourRate()) +
                            (dayData.ActualOvertimeLabourHours * GetOvertimeLabourRate()) +
@@ -778,7 +749,7 @@ namespace LabourBudgetCalculator
                            (dayData.ActualPremiumTravelHours * GetPremiumTravelRate());
                 }
             }
-            else
+            else // Expenses
             {
                 if (isPlanned)
                 {
@@ -786,7 +757,7 @@ namespace LabourBudgetCalculator
                            dayData.PlannedFlightCost + dayData.PlannedRentalCarCost +
                            dayData.PlannedHotelCost;
                 }
-                else
+                else // Actual
                 {
                     return dayData.ActualMileageCost + dayData.ActualPerDiemCost +
                            dayData.ActualFlightCost + dayData.ActualRentalCarCost +
@@ -805,7 +776,7 @@ namespace LabourBudgetCalculator
             decimal total = 0;
             foreach (var dayEntry in _resource.DailyData.Values)
             {
-                total += CalculateDayTotal(dayEntry, false);
+                total += CalculateDayTotal(dayEntry, false); // Use actual values for the displayed total
             }
             _totalLabel.Text = string.Format("Total: {0:C2}", total);
         }
@@ -814,7 +785,7 @@ namespace LabourBudgetCalculator
         {
             UpdateTotalLabel();
             _parentWindow.MarkProjectDirty();
-            _parentWindow.SaveData();
+            // _parentWindow.SaveData(); // Consider if auto-save on every change is desired or too frequent
         }
 
         internal void AppendCSVData(StringBuilder sb)
@@ -830,7 +801,7 @@ namespace LabourBudgetCalculator
             {
                 var dayData = dayEntry.Value;
                 var line = string.Format("{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14}",
-                    _resource.TechnicianName,
+                    EscapeCSV(_resource.TechnicianName),
                     dayData.Date.ToShortDateString(),
                     dayData.Date.ToString("dddd"),
                     dayData.ActualRegularLabourHours,
@@ -849,15 +820,23 @@ namespace LabourBudgetCalculator
                 sb.AppendLine(line);
             }
         }
+        private string EscapeCSV(string value)
+        {
+            if (value == null) return "";
+            if (value.Contains(",") || value.Contains("\"") || value.Contains("\n"))
+            {
+                return "\"" + value.Replace("\"", "\"\"") + "\"";
+            }
+            return value;
+        }
     }
 
-    // EditableCell Class
     internal class EditableCell : UserControl
     {
         private Label _label;
         private TextBox _textBox;
         private decimal _value;
-        private string _dataType;
+        private string _dataType; // e.g., "ServiceReg", "Mileage"
         private int _dayKey;
         private ResourceDayData _dayData;
         private CommissioningResource _resource;
@@ -865,7 +844,7 @@ namespace LabourBudgetCalculator
         private bool _isEditing = false;
 
         public EditableCell(decimal value, string dataType, int dayKey, ResourceDayData dayData,
-                          CommissioningResource resource, ResourcePanel parentPanel)
+                              CommissioningResource resource, ResourcePanel parentPanel)
         {
             _value = value;
             _dataType = dataType;
@@ -881,6 +860,7 @@ namespace LabourBudgetCalculator
         {
             _label = new Label();
 
+            // *** CHANGE 1: Conditional formatting for initial display ***
             if (_dataType.StartsWith("Service") || _dataType.StartsWith("Travel"))
             {
                 _label.Text = _value.ToString("F1"); // Hours format
@@ -889,15 +869,23 @@ namespace LabourBudgetCalculator
             {
                 _label.Text = _value.ToString("C2"); // Currency format
             }
+            // *** The problematic overriding line `_label.Text = _value.ToString("C2");` that was here previously is now effectively handled by the else block above. ***
 
-            _label.Text = _value.ToString("C2");
             _label.TextAlign = ContentAlignment.MiddleRight;
             _label.Dock = DockStyle.Fill;
             _label.Cursor = Cursors.Hand;
             _label.MouseClick += Label_MouseClick;
 
             _textBox = new TextBox();
-            _textBox.Text = _value.ToString("F2");
+            // Set TextBox initial text based on type as well for consistency
+            if (_dataType.StartsWith("Service") || _dataType.StartsWith("Travel"))
+            {
+                _textBox.Text = _value.ToString("F1");
+            }
+            else
+            {
+                _textBox.Text = _value.ToString("F2"); // F2 for editing currency
+            }
             _textBox.TextAlign = HorizontalAlignment.Right;
             _textBox.Dock = DockStyle.Fill;
             _textBox.Visible = false;
@@ -922,6 +910,14 @@ namespace LabourBudgetCalculator
             _isEditing = true;
             _label.Visible = false;
             _textBox.Visible = true;
+            if (_dataType.StartsWith("Service") || _dataType.StartsWith("Travel"))
+            {
+                _textBox.Text = _value.ToString("F1");
+            }
+            else
+            {
+                _textBox.Text = _value.ToString("F2"); // F2 for editing currency
+            }
             _textBox.SelectAll();
             _textBox.Focus();
         }
@@ -935,17 +931,35 @@ namespace LabourBudgetCalculator
             if (save)
             {
                 decimal newValue;
-                if (decimal.TryParse(_textBox.Text, out newValue))
+                if (decimal.TryParse(_textBox.Text, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.CurrentCulture, out newValue))
                 {
                     if (newValue != _value)
                     {
                         _value = newValue;
                         UpdateDayData(newValue);
-                        _label.Text = _value.ToString("C2");
+                        // *** CHANGE 2: Conditional formatting after edit ***
+                        if (_dataType.StartsWith("Service") || _dataType.StartsWith("Travel"))
+                        {
+                            _label.Text = _value.ToString("F1"); // Hours format
+                        }
+                        else
+                        {
+                            _label.Text = _value.ToString("C2"); // Currency format
+                        }
                         _parentPanel.NotifyValueChanged();
                     }
                 }
+                // If parsing fails, revert to original value display
+                else
+                {
+                    if (_dataType.StartsWith("Service") || _dataType.StartsWith("Travel")) { _label.Text = _value.ToString("F1"); } else { _label.Text = _value.ToString("C2"); }
+                }
             }
+            else // If not saving (e.g. Escape pressed), revert display
+            {
+                if (_dataType.StartsWith("Service") || _dataType.StartsWith("Travel")) { _label.Text = _value.ToString("F1"); } else { _label.Text = _value.ToString("C2"); }
+            }
+
 
             _textBox.Visible = false;
             _label.Visible = true;
@@ -954,80 +968,34 @@ namespace LabourBudgetCalculator
         private void UpdateDayData(decimal newValue)
         {
             // For service and travel, the value IS the hours (not cost)
-            if (_dataType == "ServiceReg")
-                _dayData.ActualRegularLabourHours = newValue;
-            else if (_dataType == "ServiceOT")
-                _dayData.ActualOvertimeLabourHours = newValue;
-            else if (_dataType == "ServicePrem")
-                _dayData.ActualPremiumLabourHours = newValue;
-            else if (_dataType == "TravelReg")
-                _dayData.ActualRegularTravelHours = newValue;
-            else if (_dataType == "TravelOT")
-                _dayData.ActualOvertimeTravelHours = newValue;
-            else if (_dataType == "TravelPrem")
-                _dayData.ActualPremiumTravelHours = newValue;
-            else if (_dataType == "Mileage")
-                _dayData.ActualMileageCost = newValue;
-            else if (_dataType == "PerDiem")
-                _dayData.ActualPerDiemCost = newValue;
-            else if (_dataType == "Flight")
-                _dayData.ActualFlightCost = newValue;
-            else if (_dataType == "CarRental")
-                _dayData.ActualRentalCarCost = newValue;
-            else if (_dataType == "Hotel")
-                _dayData.ActualHotelCost = newValue;
-        }
+            if (_dataType == "ServiceReg") _dayData.ActualRegularLabourHours = newValue;
+            else if (_dataType == "ServiceOT") _dayData.ActualOvertimeLabourHours = newValue;
+            else if (_dataType == "ServicePrem") _dayData.ActualPremiumLabourHours = newValue;
+            else if (_dataType == "TravelReg") _dayData.ActualRegularTravelHours = newValue;
+            else if (_dataType == "TravelOT") _dayData.ActualOvertimeTravelHours = newValue;
+            else if (_dataType == "TravelPrem") _dayData.ActualPremiumTravelHours = newValue;
+            // For expenses, the value is cost
+            else if (_dataType == "Mileage") _dayData.ActualMileageCost = newValue;
+            else if (_dataType == "PerDiem") _dayData.ActualPerDiemCost = newValue;
+            else if (_dataType == "Flight") _dayData.ActualFlightCost = newValue;
+            else if (_dataType == "CarRental") _dayData.ActualRentalCarCost = newValue;
+            else if (_dataType == "Hotel") _dayData.ActualHotelCost = newValue;
 
-        private decimal GetRegularLabourRate()
-        {
-            decimal rate = _resource.RegularLabourRate;
-            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
-            return _resource.IsEmergency ? _resource.PremiumLabourRate * discountFactor : rate * discountFactor;
-        }
-
-        private decimal GetOvertimeLabourRate()
-        {
-            decimal rate = _resource.OvertimeLabourRate;
-            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
-            return _resource.IsEmergency ? _resource.PremiumLabourRate * discountFactor : rate * discountFactor;
-        }
-
-        private decimal GetPremiumLabourRate()
-        {
-            decimal rate = _resource.PremiumLabourRate;
-            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
-            return rate * discountFactor;
-        }
-
-        private decimal GetRegularTravelRate()
-        {
-            decimal rate = _resource.RegularTravelRate;
-            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
-            return _resource.IsEmergency ? _resource.PremiumTravelRate * discountFactor : rate * discountFactor;
-        }
-
-        private decimal GetOvertimeTravelRate()
-        {
-            decimal rate = _resource.OvertimeTravelRate;
-            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
-            return _resource.IsEmergency ? _resource.PremiumTravelRate * discountFactor : rate * discountFactor;
-        }
-
-        private decimal GetPremiumTravelRate()
-        {
-            decimal rate = _resource.PremiumTravelRate;
-            decimal discountFactor = 1 - (_resource.DiscountPercent / 100m);
-            return rate * discountFactor;
+            _resource.IsDirty = true; // Mark resource as dirty as actuals have changed
+            // Project totals will be recalculated before saving or when summary is updated
         }
 
         private void TextBox_KeyPress(object sender, KeyPressEventArgs e)
         {
-            if (!char.IsControl(e.KeyChar) && !char.IsDigit(e.KeyChar) && e.KeyChar != '.')
+            // Allow numbers, decimal point, and control characters (like backspace)
+            if (!char.IsControl(e.KeyChar) && !char.IsDigit(e.KeyChar) &&
+                (e.KeyChar != '.'))
             {
                 e.Handled = true;
             }
 
-            if (e.KeyChar == '.' && _textBox.Text.IndexOf('.') > -1)
+            // Allow only one decimal point
+            if ((e.KeyChar == '.') && ((sender as TextBox).Text.IndexOf('.') > -1))
             {
                 e.Handled = true;
             }
@@ -1043,7 +1011,8 @@ namespace LabourBudgetCalculator
             }
             else if (e.KeyCode == Keys.Escape)
             {
-                _textBox.Text = _value.ToString("F2");
+                // Revert textbox text before ending edit without saving
+                if (_dataType.StartsWith("Service") || _dataType.StartsWith("Travel")) { _textBox.Text = _value.ToString("F1"); } else { _textBox.Text = _value.ToString("F2"); }
                 EndEdit(false);
                 e.Handled = true;
                 e.SuppressKeyPress = true;
@@ -1052,7 +1021,11 @@ namespace LabourBudgetCalculator
 
         private void TextBox_Leave(object sender, EventArgs e)
         {
-            EndEdit(true);
+            // Only save if the textbox is still visible (i.e., wasn't an Esc/Enter key press that already handled it)
+            if (_textBox.Visible)
+            {
+                EndEdit(true);
+            }
         }
     }
 }

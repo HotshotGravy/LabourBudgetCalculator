@@ -30,7 +30,7 @@ namespace LabourBudgetCalculator
         {
             // Title label
             Label lblTitle = new Label();
-            lblTitle.Text = "Welcome to Time & Expense Calculator";
+            lblTitle.Text = "Time and Expense Budget Wizard";
             lblTitle.Font = new Font(this.Font.FontFamily, 14, FontStyle.Bold);
             lblTitle.Size = new Size(350, 50);
             lblTitle.Location = new Point(25, 30);
@@ -57,9 +57,9 @@ namespace LabourBudgetCalculator
 
             // Commissioning Tracker button
             Button btnCommissioningTracker = new Button();
-            btnCommissioningTracker.Text = "Commissioning & Service Tracker";
-            btnCommissioningTracker.Size = new Size(200, 40);
-            btnCommissioningTracker.Location = new Point(100, 180);
+            btnCommissioningTracker.Text = "Commissioning / Service Tracker";
+            btnCommissioningTracker.Size = new Size(240, 50);
+            btnCommissioningTracker.Location = new Point(75, 180);
             btnCommissioningTracker.Font = new Font(this.Font.FontFamily, 10);
             btnCommissioningTracker.Click += BtnCommissioningTracker_Click;
             this.Controls.Add(btnCommissioningTracker);

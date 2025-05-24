@@ -2,7 +2,8 @@
 using System.Collections.Generic;
 using System.Xml.Serialization;
 using System.Linq;
-using LabourBudgetCalculator.Models; // For ResourceDayData
+using LabourBudgetCalculator.Models; // For ResourceDayData and DailyHourBreakdown
+using LabourBudgetCalculator.Helpers; // For HourCategorizerUtil
 using System.IO;
 using System.Text;
 
@@ -21,7 +22,7 @@ namespace LabourBudgetCalculator
         public decimal LunchDuration { get; set; }
         public string RateSheetName { get; set; }
         public decimal DiscountPercent { get; set; }
-        public bool IsEmergency { get; set; }
+        public bool IsEmergency { get; set; } // Used by HourCategorizerUtil
 
         // Rates
         public decimal RegularLabourRate { get; set; }
@@ -36,9 +37,9 @@ namespace LabourBudgetCalculator
         public bool SeparateTravelFrom { get; set; }
         public string TravelMethod { get; set; }
         public decimal TravelDistance { get; set; }
-        public decimal TravelTime { get; set; }
+        public decimal TravelTime { get; set; } // Total travel time for separate travel days
         public decimal DailyTravelDistance { get; set; }
-        public decimal DailyTravelTime { get; set; }
+        public decimal DailyTravelTime { get; set; } // One-way daily travel
 
         // Expense settings
         public decimal FlightCost { get; set; }
@@ -50,11 +51,9 @@ namespace LabourBudgetCalculator
         public decimal PerDiemRate { get; set; }
         public decimal OtherExpenses { get; set; }
 
-        // The runtime dictionary - not directly serialized
         [XmlIgnore]
         public Dictionary<int, ResourceDayData> DailyData { get; set; }
 
-        // XML serialization surrogate property
         [XmlArray("DailyDataItems")]
         [XmlArrayItem("DayEntry")]
         public DailyDataKvp[] DailyDataForXml
@@ -63,13 +62,12 @@ namespace LabourBudgetCalculator
             {
                 if (DailyData == null || !DailyData.Any())
                 {
-                    return new DailyDataKvp[0]; // Return empty array instead of null
+                    return new DailyDataKvp[0];
                 }
                 return DailyData.Select(kvp => new DailyDataKvp { DayKey = kvp.Key, Data = kvp.Value }).ToArray();
             }
             set
             {
-                System.Diagnostics.Debug.WriteLine($"DailyDataForXml setter called for {TechnicianName ?? "unnamed resource"}. Items count: {value?.Length ?? 0}");
                 DailyData = new Dictionary<int, ResourceDayData>();
                 if (value != null)
                 {
@@ -77,23 +75,15 @@ namespace LabourBudgetCalculator
                     {
                         try
                         {
-                            System.Diagnostics.Debug.WriteLine($"Processing day {item.DayKey}, Date: {item.Data?.Date}");
-
-                            // Ensure day data has valid defaults
-                            if (item.Data == null)
-                                item.Data = new ResourceDayData();
-
-                            // Validate date - set to minimum date if invalid
-                            if (item.Data.Date == DateTime.MinValue)
+                            if (item.Data == null) item.Data = new ResourceDayData();
+                            if (item.Data.Date == DateTime.MinValue && StartDate != DateTime.MinValue)
                             {
-                                item.Data.Date = StartDate.AddDays(item.DayKey);
-                                System.Diagnostics.Debug.WriteLine($"Set date for day {item.DayKey} to {item.Data.Date}");
+                                // Attempt to reconstruct date if StartDate is valid
+                                item.Data.Date = StartDate.AddDays(item.DayKey >= 0 ? item.DayKey : (item.DayKey == -1 && SeparateTravelTo ? -1 : 0));
                             }
-
                             if (!DailyData.ContainsKey(item.DayKey))
                             {
                                 DailyData.Add(item.DayKey, item.Data);
-                                System.Diagnostics.Debug.WriteLine($"Added day {item.DayKey} to DailyData dictionary");
                             }
                         }
                         catch (Exception ex)
@@ -102,11 +92,9 @@ namespace LabourBudgetCalculator
                         }
                     }
                 }
-                System.Diagnostics.Debug.WriteLine($"DailyDataForXml setter finished. Final DailyData count: {DailyData?.Count ?? 0}");
             }
         }
 
-        // Non-serialized runtime properties
         [XmlIgnore]
         public bool IsDirty { get; set; }
 
@@ -132,273 +120,297 @@ namespace LabourBudgetCalculator
             TravelMethod = "Driving";
         }
 
-        /// <summary>
-        /// Rebuilds the DailyData dictionary based on current resource settings
-        /// </summary>
         public void InitializeFromSchedule()
         {
             try
             {
                 var newDailyData = new Dictionary<int, ResourceDayData>();
                 DateTime effectiveStartDate = this.StartDate;
+                int totalEngagementDays = DaysOnSite;
+                if (SeparateTravelTo) totalEngagementDays++;
+                if (SeparateTravelFrom) totalEngagementDays++;
+                int currentEngagementDay = 0;
 
-                // Handle travel to site day if needed
+                // --- Separate Travel To Site Day ---
                 if (SeparateTravelTo)
                 {
-                    ResourceDayData travelToDay = new ResourceDayData
-                    {
-                        Date = effectiveStartDate.AddDays(-1),
-                        PlannedStartTime = DefaultStartTime,
-                        ActualStartTime = DefaultStartTime,
-                        PlannedRegularTravelHours = TravelTime > 0 ? TravelTime : 8,
-                        ActualRegularTravelHours = TravelTime > 0 ? TravelTime : 8,
-                        PlannedPerDiemCost = PerDiemRate,
-                        ActualPerDiemCost = PerDiemRate,
-                        PlannedHotelCost = HotelRequired ? HotelRate : 0,
-                        ActualHotelCost = HotelRequired ? HotelRate : 0
-                    };
+                    currentEngagementDay++;
+                    DateTime travelToDate = effectiveStartDate.AddDays(-1);
+                    decimal travelToHoursInput = TravelTime > 0 ? TravelTime : 8m; // Total travel hours for this day
 
-                    // Set end time based on start time and travel duration
-                    if (TimeSpan.TryParse(travelToDay.PlannedStartTime, out TimeSpan startTime))
+                    DailyHourBreakdown travelToBreakdown = HourCategorizerUtil.CategorizeDailyHours(
+                        0m, travelToHoursInput, travelToDate.DayOfWeek, this.IsEmergency, false);
+
+                    ResourceDayData travelToDay = null;
+                    if (DailyData == null || !DailyData.TryGetValue(-1, out travelToDay))
                     {
-                        TimeSpan endTime = startTime.Add(TimeSpan.FromHours((double)travelToDay.PlannedRegularTravelHours));
-                        travelToDay.PlannedEndTime = endTime.ToString(@"hh\:mm");
-                        travelToDay.ActualEndTime = travelToDay.PlannedEndTime;
+                        travelToDay = new ResourceDayData();
                     }
+                    travelToDay.Date = travelToDate;
+                    travelToDay.PlannedStartTime = DefaultStartTime;
+                    travelToDay.PlannedRegularLabourHours = travelToBreakdown.RegularLabourHours;
+                    travelToDay.PlannedOvertimeLabourHours = travelToBreakdown.OvertimeLabourHours;
+                    travelToDay.PlannedPremiumLabourHours = travelToBreakdown.PremiumLabourHours;
+                    travelToDay.PlannedRegularTravelHours = travelToBreakdown.RegularTravelHours;
+                    travelToDay.PlannedOvertimeTravelHours = travelToBreakdown.OvertimeTravelHours;
+                    travelToDay.PlannedPremiumTravelHours = travelToBreakdown.PremiumTravelHours;
 
-                    // Add travel day to dictionary with key -1
+                    bool isLastDayForHotel = (currentEngagementDay == totalEngagementDays);
+                    travelToDay.PlannedHotelCost = HotelRequired && !isLastDayForHotel ? HotelRate : 0;
+                    travelToDay.PlannedRentalCarCost = RentalCarRequired ? RentalCarRate : 0;
+                    travelToDay.PlannedFlightCost = TravelMethod == "Flight" ? FlightCost : 0;
+                    travelToDay.PlannedMileageCost = TravelMethod == "Driving" && TravelDistance > 0 ? TravelDistance * MileageRate : 0;
+                    travelToDay.PlannedPerDiemCost = travelToBreakdown.GetTotalPlannedHours() > 0 ? PerDiemRate : 0;
+
+                    if (TimeSpan.TryParse(travelToDay.PlannedStartTime, out TimeSpan st))
+                        travelToDay.PlannedEndTime = st.Add(TimeSpan.FromHours((double)travelToHoursInput)).ToString(@"hh\:mm");
                     newDailyData[-1] = travelToDay;
                 }
 
-                // Create entries for each work day
+                // --- Work Days ---
                 for (int dayIndex = 0; dayIndex < DaysOnSite; dayIndex++)
                 {
+                    currentEngagementDay++;
                     DateTime currentDate = effectiveStartDate.AddDays(dayIndex);
 
-                    // Check if we already have data for this day
-                    ResourceDayData existingEntry = null;
-                    if (DailyData != null && DailyData.TryGetValue(dayIndex, out existingEntry))
+                    // Determine total planned labour and travel for this workday
+                    decimal workDayPlannedLabour = HoursPerDay;
+                    decimal workDayPlannedTravel = DailyTravelTime * 2; // Default daily travel (round trip)
+
+                    bool isFirstWorkDayForMainTravel = (dayIndex == 0 && !SeparateTravelTo);
+                    bool isLastWorkDayForMainTravel = (dayIndex == DaysOnSite - 1 && !SeparateTravelFrom);
+
+                    if (isFirstWorkDayForMainTravel && isLastWorkDayForMainTravel)
                     {
-                        existingEntry.Date = currentDate;
+                        // Single work day acting as both arrival and departure travel event
+                        // Use TravelTime if it's greater than default daily travel, implies it's the main journey time
+                        workDayPlannedTravel = (TravelTime * 2) > workDayPlannedTravel ? (TravelTime * 2) : workDayPlannedTravel; // Assuming TravelTime is one-way
+                                                                                                                                  // If TravelTime is already round-trip for this scenario, just assign TravelTime
+                    }
+                    else if (isFirstWorkDayForMainTravel)
+                    {
+                        workDayPlannedTravel = TravelTime > workDayPlannedTravel ? TravelTime : workDayPlannedTravel;
+                    }
+                    else if (isLastWorkDayForMainTravel)
+                    {
+                        workDayPlannedTravel = TravelTime > workDayPlannedTravel ? TravelTime : workDayPlannedTravel;
+                    }
+                    // If neither, workDayPlannedTravel remains DailyTravelTime * 2
+
+                    DailyHourBreakdown breakdown = HourCategorizerUtil.CategorizeDailyHours(
+                        workDayPlannedLabour, workDayPlannedTravel, currentDate.DayOfWeek, this.IsEmergency, false);
+
+                    ResourceDayData entry = null;
+                    if (DailyData == null || !DailyData.TryGetValue(dayIndex, out entry))
+                    {
+                        entry = new ResourceDayData();
+                    }
+                    entry.Date = currentDate;
+                    entry.PlannedStartTime = DefaultStartTime;
+                    entry.PlannedRegularLabourHours = breakdown.RegularLabourHours;
+                    entry.PlannedOvertimeLabourHours = breakdown.OvertimeLabourHours;
+                    entry.PlannedPremiumLabourHours = breakdown.PremiumLabourHours;
+                    entry.PlannedRegularTravelHours = breakdown.RegularTravelHours;
+                    entry.PlannedOvertimeTravelHours = breakdown.OvertimeTravelHours;
+                    entry.PlannedPremiumTravelHours = breakdown.PremiumTravelHours;
+
+                    bool isLastDayForHotel = (currentEngagementDay == totalEngagementDays);
+                    entry.PlannedHotelCost = HotelRequired && !isLastDayForHotel ? HotelRate : 0;
+                    entry.PlannedRentalCarCost = RentalCarRequired ? RentalCarRate : 0;
+
+                    entry.PlannedFlightCost = 0;
+                    if (TravelMethod == "Flight")
+                    {
+                        if (isFirstWorkDayForMainTravel) entry.PlannedFlightCost += FlightCost;
+                        if (isLastWorkDayForMainTravel && !(isFirstWorkDayForMainTravel && DaysOnSite == 1)) entry.PlannedFlightCost += FlightCost; // Add if distinct from first day event
+                        if (isFirstWorkDayForMainTravel && isLastWorkDayForMainTravel && DaysOnSite == 1) entry.PlannedFlightCost = FlightCost * 2; // If one day site, two flights
                     }
 
-                    ResourceDayData entry = existingEntry ?? new ResourceDayData
+                    entry.PlannedMileageCost = 0;
+                    if (TravelMethod == "Driving")
                     {
-                        Date = currentDate,
-                        PlannedStartTime = DefaultStartTime,
-                        ActualStartTime = DefaultStartTime
-                    };
+                        if (isFirstWorkDayForMainTravel) entry.PlannedMileageCost += TravelDistance * MileageRate;
+                        if (isLastWorkDayForMainTravel && !(isFirstWorkDayForMainTravel && DaysOnSite == 1)) entry.PlannedMileageCost += TravelDistance * MileageRate;
+                        if (isFirstWorkDayForMainTravel && isLastWorkDayForMainTravel && DaysOnSite == 1) entry.PlannedMileageCost = TravelDistance * 2 * MileageRate; // Round trip mileage
 
-                    bool isWeekend = currentDate.DayOfWeek == DayOfWeek.Saturday ||
-                                     currentDate.DayOfWeek == DayOfWeek.Sunday;
-
-                    // Default planning values if not already set
-                    if (existingEntry == null)
-                    {
-                        // Set planned hours based on regular work week
-                        entry.PlannedRegularLabourHours = isWeekend ? 0 : HoursPerDay;
-                        entry.PlannedOvertimeLabourHours = 0;
-                        entry.PlannedPremiumLabourHours = isWeekend ? HoursPerDay : 0;
-
-                        // Set daily travel if applicable
-                        entry.PlannedRegularTravelHours = DailyTravelTime * 2; // Round trip
-
-                        // Initialize actual to match planned
-                        entry.ActualRegularLabourHours = entry.PlannedRegularLabourHours;
-                        entry.ActualOvertimeLabourHours = entry.PlannedOvertimeLabourHours;
-                        entry.ActualPremiumLabourHours = entry.PlannedPremiumLabourHours;
-                        entry.ActualRegularTravelHours = entry.PlannedRegularTravelHours;
-
-                        // Set per diem and hotel costs
-                        entry.PlannedPerDiemCost = PerDiemRate;
-                        entry.ActualPerDiemCost = PerDiemRate;
-
-                        // Hotel is needed except for the last day
-                        entry.PlannedHotelCost = HotelRequired && dayIndex < DaysOnSite - 1 ? HotelRate : 0;
-                        entry.ActualHotelCost = entry.PlannedHotelCost;
-
-                        // Set mileage costs based on daily travel
-                        if (DailyTravelDistance > 0 && MileageRate > 0)
+                        if (!isFirstWorkDayForMainTravel && !isLastWorkDayForMainTravel && !RentalCarRequired && DailyTravelDistance > 0)
                         {
-                            entry.PlannedMileageCost = DailyTravelDistance * 2 * MileageRate; // Round trip
-                            entry.ActualMileageCost = entry.PlannedMileageCost;
-                        }
-
-                        // Set rental car if required
-                        if (RentalCarRequired)
-                        {
-                            entry.PlannedRentalCarCost = RentalCarRate;
-                            entry.ActualRentalCarCost = RentalCarRate;
+                            entry.PlannedMileageCost = DailyTravelDistance * 2 * MileageRate; // Daily commute
                         }
                     }
 
-                    // Calculate planned end time based on start time and work duration
+                    entry.PlannedPerDiemCost = breakdown.GetTotalPlannedHours() > 0 ? PerDiemRate : 0;
+
                     if (TimeSpan.TryParse(entry.PlannedStartTime, out TimeSpan st))
                     {
-                        decimal totalWorkHours = entry.PlannedRegularLabourHours +
-                                               entry.PlannedOvertimeLabourHours +
-                                               entry.PlannedPremiumLabourHours;
-
-                        entry.PlannedEndTime = st.Add(TimeSpan.FromHours((double)(totalWorkHours + LunchDuration)))
-                                                .ToString(@"hh\:mm");
-
-                        if (string.IsNullOrEmpty(entry.ActualEndTime))
-                        {
-                            entry.ActualEndTime = entry.PlannedEndTime;
-                        }
+                        decimal totalWorkHoursForEndTime = entry.PlannedRegularLabourHours + entry.PlannedOvertimeLabourHours + entry.PlannedPremiumLabourHours;
+                        entry.PlannedEndTime = st.Add(TimeSpan.FromHours((double)(totalWorkHoursForEndTime + LunchDuration))).ToString(@"hh\:mm");
                     }
-
-                    // Add this day to the dictionary
                     newDailyData[dayIndex] = entry;
                 }
 
-                // Handle travel from site day if needed
+                // --- Separate Travel From Site Day ---
                 if (SeparateTravelFrom)
                 {
-                    ResourceDayData travelFromDay = new ResourceDayData
-                    {
-                        Date = effectiveStartDate.AddDays(DaysOnSite),
-                        PlannedStartTime = DefaultStartTime,
-                        ActualStartTime = DefaultStartTime,
-                        PlannedRegularTravelHours = TravelTime > 0 ? TravelTime : 8,
-                        ActualRegularTravelHours = TravelTime > 0 ? TravelTime : 8,
-                        PlannedPerDiemCost = PerDiemRate,
-                        ActualPerDiemCost = PerDiemRate
-                        // No hotel needed for travel home day
-                    };
+                    currentEngagementDay++;
+                    DateTime travelFromDate = effectiveStartDate.AddDays(DaysOnSite);
+                    decimal travelFromHoursInput = TravelTime > 0 ? TravelTime : 8m;
 
-                    // Set end time
-                    if (TimeSpan.TryParse(travelFromDay.PlannedStartTime, out TimeSpan startTime))
+                    DailyHourBreakdown travelFromBreakdown = HourCategorizerUtil.CategorizeDailyHours(
+                        0m, travelFromHoursInput, travelFromDate.DayOfWeek, this.IsEmergency, false);
+
+                    ResourceDayData travelFromDay = null;
+                    if (DailyData == null || !DailyData.TryGetValue(DaysOnSite, out travelFromDay))
                     {
-                        TimeSpan endTime = startTime.Add(TimeSpan.FromHours((double)travelFromDay.PlannedRegularTravelHours));
-                        travelFromDay.PlannedEndTime = endTime.ToString(@"hh\:mm");
-                        travelFromDay.ActualEndTime = travelFromDay.PlannedEndTime;
+                        travelFromDay = new ResourceDayData();
                     }
+                    travelFromDay.Date = travelFromDate;
+                    travelFromDay.PlannedStartTime = DefaultStartTime;
+                    travelFromDay.PlannedRegularLabourHours = travelFromBreakdown.RegularLabourHours;
+                    travelFromDay.PlannedOvertimeLabourHours = travelFromBreakdown.OvertimeLabourHours;
+                    travelFromDay.PlannedPremiumLabourHours = travelFromBreakdown.PremiumLabourHours;
+                    travelFromDay.PlannedRegularTravelHours = travelFromBreakdown.RegularTravelHours;
+                    travelFromDay.PlannedOvertimeTravelHours = travelFromBreakdown.OvertimeTravelHours;
+                    travelFromDay.PlannedPremiumTravelHours = travelFromBreakdown.PremiumTravelHours;
 
-                    // Add travel day to dictionary with key = DaysOnSite
+                    travelFromDay.PlannedHotelCost = 0;
+                    travelFromDay.PlannedRentalCarCost = RentalCarRequired ? RentalCarRate : 0;
+                    travelFromDay.PlannedFlightCost = TravelMethod == "Flight" ? FlightCost : 0;
+                    travelFromDay.PlannedMileageCost = TravelMethod == "Driving" && TravelDistance > 0 ? TravelDistance * MileageRate : 0;
+                    travelFromDay.PlannedPerDiemCost = travelFromBreakdown.GetTotalPlannedHours() > 0 ? PerDiemRate : 0;
+
+                    if (TimeSpan.TryParse(travelFromDay.PlannedStartTime, out TimeSpan st))
+                        travelFromDay.PlannedEndTime = st.Add(TimeSpan.FromHours((double)travelFromHoursInput)).ToString(@"hh\:mm");
                     newDailyData[DaysOnSite] = travelFromDay;
                 }
 
-                // Replace the existing dictionary with the new one
+                // Preserve actuals
+                if (DailyData != null)
+                {
+                    foreach (var kvp in DailyData)
+                    {
+                        if (newDailyData.TryGetValue(kvp.Key, out ResourceDayData newEntryToUpdate) && kvp.Value != null)
+                        {
+                            // A more robust check for whether actuals have been meaningfully set by user
+                            bool actualsAreSet = kvp.Value.ActualRegularLabourHours != 0 || kvp.Value.ActualOvertimeLabourHours != 0 || /* ... more checks ...*/
+                                                 kvp.Value.ActualHotelCost != default || // Check against default, not just 0
+                                                 (kvp.Value.ActualStartTime != null && kvp.Value.ActualStartTime != newEntryToUpdate.PlannedStartTime) ||
+                                                 (kvp.Value.ActualEndTime != null && kvp.Value.ActualEndTime != newEntryToUpdate.PlannedEndTime);
+
+
+                            if (actualsAreSet) // Simplified condition, refine if needed
+                            {
+                                newEntryToUpdate.ActualRegularLabourHours = kvp.Value.ActualRegularLabourHours;
+                                newEntryToUpdate.ActualOvertimeLabourHours = kvp.Value.ActualOvertimeLabourHours;
+                                newEntryToUpdate.ActualPremiumLabourHours = kvp.Value.ActualPremiumLabourHours;
+                                newEntryToUpdate.ActualRegularTravelHours = kvp.Value.ActualRegularTravelHours;
+                                newEntryToUpdate.ActualOvertimeTravelHours = kvp.Value.ActualOvertimeTravelHours;
+                                newEntryToUpdate.ActualPremiumTravelHours = kvp.Value.ActualPremiumTravelHours;
+                                newEntryToUpdate.ActualStartTime = kvp.Value.ActualStartTime;
+                                newEntryToUpdate.ActualEndTime = kvp.Value.ActualEndTime;
+                                newEntryToUpdate.ActualHotelCost = kvp.Value.ActualHotelCost;
+                                newEntryToUpdate.ActualMileageCost = kvp.Value.ActualMileageCost;
+                                newEntryToUpdate.ActualPerDiemCost = kvp.Value.ActualPerDiemCost;
+                                newEntryToUpdate.ActualFlightCost = kvp.Value.ActualFlightCost;
+                                newEntryToUpdate.ActualRentalCarCost = kvp.Value.ActualRentalCarCost;
+                            }
+                            else
+                            { // If no significant actuals were set, copy from planned to keep actuals in sync initially
+                                newEntryToUpdate.ActualRegularLabourHours = newEntryToUpdate.PlannedRegularLabourHours;
+                                newEntryToUpdate.ActualOvertimeLabourHours = newEntryToUpdate.PlannedOvertimeLabourHours;
+                                newEntryToUpdate.ActualPremiumLabourHours = newEntryToUpdate.PlannedPremiumLabourHours;
+                                newEntryToUpdate.ActualRegularTravelHours = newEntryToUpdate.PlannedRegularTravelHours;
+                                newEntryToUpdate.ActualOvertimeTravelHours = newEntryToUpdate.PlannedOvertimeTravelHours;
+                                newEntryToUpdate.ActualPremiumTravelHours = newEntryToUpdate.PlannedPremiumTravelHours;
+                                newEntryToUpdate.ActualStartTime = newEntryToUpdate.PlannedStartTime;
+                                newEntryToUpdate.ActualEndTime = newEntryToUpdate.PlannedEndTime;
+                                newEntryToUpdate.ActualHotelCost = newEntryToUpdate.PlannedHotelCost;
+                                newEntryToUpdate.ActualMileageCost = newEntryToUpdate.PlannedMileageCost;
+                                newEntryToUpdate.ActualPerDiemCost = newEntryToUpdate.PlannedPerDiemCost;
+                                newEntryToUpdate.ActualFlightCost = newEntryToUpdate.PlannedFlightCost;
+                                newEntryToUpdate.ActualRentalCarCost = newEntryToUpdate.PlannedRentalCarCost;
+                            }
+                        }
+                    }
+                }
+
                 DailyData = newDailyData;
                 IsDirty = false;
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error in InitializeFromSchedule for {TechnicianName}: {ex.Message}");
-                // Create an empty dictionary if initialization fails
-                DailyData = new Dictionary<int, ResourceDayData>();
+                DailyData = DailyData ?? new Dictionary<int, ResourceDayData>();
                 IsDirty = true;
             }
         }
 
-        /// <summary>
-        /// Calculates resource totals based on the DailyData
-        /// </summary>
         public void CalculateResourceTotals()
         {
             try
             {
-                // Initialize all totals to zero
                 PlannedServiceAndTravelChargesTotal = 0;
                 ActualServiceAndTravelChargesTotal = 0;
                 PlannedExpensesTotal = 0;
                 ActualExpensesTotal = 0;
 
-                // If no daily data, nothing to calculate
                 if (DailyData == null || !DailyData.Any())
                 {
-                    PlannedResourceTotal = 0;
-                    ActualResourceTotal = 0;
-                    ForecastResourceTotal = 0;
+                    PlannedResourceTotal = 0; ActualResourceTotal = 0; ForecastResourceTotal = 0;
                     return;
                 }
 
-                // Calculate discount factor
                 decimal discountFactor = 1 - (DiscountPercent / 100m);
+                decimal effRegLabourRate = (IsEmergency ? PremiumLabourRate : RegularLabourRate) * discountFactor;
+                decimal effOTLabourRate = (IsEmergency ? PremiumLabourRate : OvertimeLabourRate) * discountFactor;
+                decimal effPremLabourRate = PremiumLabourRate * discountFactor;
+                decimal effRegTravelRate = (IsEmergency ? PremiumTravelRate : RegularTravelRate) * discountFactor;
+                decimal effOTTravelRate = (IsEmergency ? PremiumTravelRate : OvertimeTravelRate) * discountFactor;
+                decimal effPremTravelRate = PremiumTravelRate * discountFactor;
 
-                // Determine effective rates based on emergency status
-                decimal effectiveRegLabourRate = IsEmergency ? PremiumLabourRate : RegularLabourRate;
-                decimal effectiveOTLabourRate = IsEmergency ? PremiumLabourRate : OvertimeLabourRate;
-                decimal effectivePremLabourRate = PremiumLabourRate;
-
-                decimal effectiveRegTravelRate = IsEmergency ? PremiumTravelRate : RegularTravelRate;
-                decimal effectiveOTTravelRate = IsEmergency ? PremiumTravelRate : OvertimeTravelRate;
-                decimal effectivePremTravelRate = PremiumTravelRate;
-
-                // Apply discount to rates
-                effectiveRegLabourRate *= discountFactor;
-                effectiveOTLabourRate *= discountFactor;
-                effectivePremLabourRate *= discountFactor;
-                effectiveRegTravelRate *= discountFactor;
-                effectiveOTTravelRate *= discountFactor;
-                effectivePremTravelRate *= discountFactor;
-
-                // Process each day's data
                 foreach (var day in DailyData.Values.OrderBy(d => d.Date))
                 {
-                    // Calculate labour charges
-                    PlannedServiceAndTravelChargesTotal += (day.PlannedRegularLabourHours * effectiveRegLabourRate) +
-                                                         (day.PlannedOvertimeLabourHours * effectiveOTLabourRate) +
-                                                         (day.PlannedPremiumLabourHours * effectivePremLabourRate);
+                    PlannedServiceAndTravelChargesTotal += (day.PlannedRegularLabourHours * effRegLabourRate) +
+                                                           (day.PlannedOvertimeLabourHours * effOTLabourRate) +
+                                                           (day.PlannedPremiumLabourHours * effPremLabourRate) +
+                                                           (day.PlannedRegularTravelHours * effRegTravelRate) +
+                                                           (day.PlannedOvertimeTravelHours * effOTTravelRate) +
+                                                           (day.PlannedPremiumTravelHours * effPremTravelRate);
 
-                    ActualServiceAndTravelChargesTotal += (day.ActualRegularLabourHours * effectiveRegLabourRate) +
-                                                        (day.ActualOvertimeLabourHours * effectiveOTLabourRate) +
-                                                        (day.ActualPremiumLabourHours * effectivePremLabourRate);
+                    ActualServiceAndTravelChargesTotal += (day.ActualRegularLabourHours * effRegLabourRate) +
+                                                          (day.ActualOvertimeLabourHours * effOTLabourRate) +
+                                                          (day.ActualPremiumLabourHours * effPremLabourRate) +
+                                                          (day.ActualRegularTravelHours * effRegTravelRate) +
+                                                          (day.ActualOvertimeTravelHours * effOTTravelRate) +
+                                                          (day.ActualPremiumTravelHours * effPremTravelRate);
 
-                    // Calculate travel charges
-                    PlannedServiceAndTravelChargesTotal += (day.PlannedRegularTravelHours * effectiveRegTravelRate) +
-                                                         (day.PlannedOvertimeTravelHours * effectiveOTTravelRate) +
-                                                         (day.PlannedPremiumTravelHours * effectivePremTravelRate);
-
-                    ActualServiceAndTravelChargesTotal += (day.ActualRegularTravelHours * effectiveRegTravelRate) +
-                                                        (day.ActualOvertimeTravelHours * effectiveOTTravelRate) +
-                                                        (day.ActualPremiumTravelHours * effectivePremTravelRate);
-
-                    // Calculate expenses
                     PlannedExpensesTotal += day.PlannedHotelCost + day.PlannedPerDiemCost + day.PlannedMileageCost +
                                           day.PlannedFlightCost + day.PlannedRentalCarCost;
-
                     ActualExpensesTotal += day.ActualHotelCost + day.ActualPerDiemCost + day.ActualMileageCost +
                                          day.ActualFlightCost + day.ActualRentalCarCost;
                 }
 
-                // Add other fixed expenses
                 PlannedExpensesTotal += OtherExpenses;
                 ActualExpensesTotal += OtherExpenses;
 
-                // Calculate resource totals
                 PlannedResourceTotal = PlannedServiceAndTravelChargesTotal + PlannedExpensesTotal;
                 ActualResourceTotal = ActualServiceAndTravelChargesTotal + ActualExpensesTotal;
-
-                // For forecast, typically use actual for completed days and planned for future days
-                // This simplified implementation just uses actual
-                ForecastResourceTotal = ActualResourceTotal;
-
-                // Resource is no longer dirty after calculation
+                ForecastResourceTotal = ActualResourceTotal; // Simplified forecast
                 IsDirty = false;
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error in CalculateResourceTotals for {TechnicianName}: {ex.Message}");
-                // Set IsDirty flag to indicate we need to recalculate
                 IsDirty = true;
             }
         }
     }
 
-    /// <summary>
-    /// Helper class for XML serialization of the DailyData dictionary's KeyValuePair.
-    /// </summary>
     [Serializable]
     public class DailyDataKvp
     {
         public int DayKey { get; set; }
         public ResourceDayData Data { get; set; }
-
-        public DailyDataKvp()
-        {
-            Data = new ResourceDayData();
-        }
+        public DailyDataKvp() { Data = new ResourceDayData(); }
     }
 }

@@ -158,61 +158,294 @@ namespace LabourBudgetCalculator
         }
 
         private void UpdateRateDisplayTextBoxes(TabPage tabPage, CommissioningResource resource)
-        { /* ... same as corrected_csharp_code_v6 ... */
+        {
             if (resource == null) return;
+
             decimal discountFactor = 1 - (resource.DiscountPercent / 100m);
-            decimal regLab = resource.RegularLabourRate * discountFactor; decimal otLab = resource.OvertimeLabourRate * discountFactor; decimal premLab = resource.PremiumLabourRate * discountFactor;
-            decimal regTrav = resource.RegularTravelRate * discountFactor; decimal otTrav = resource.OvertimeTravelRate * discountFactor; decimal premTrav = resource.PremiumTravelRate * discountFactor;
-            if (resource.IsEmergency) { regLab = premLab; otLab = premLab; regTrav = premTrav; otTrav = premTrav; }
-            FindControlInTab<TextBox>(tabPage, "txtRegularLabour")?.SetValue(t => t.Text = regLab.ToString("F2")); FindControlInTab<TextBox>(tabPage, "txtOvertimeLabour")?.SetValue(t => t.Text = otLab.ToString("F2")); FindControlInTab<TextBox>(tabPage, "txtPremiumLabour")?.SetValue(t => t.Text = premLab.ToString("F2"));
-            FindControlInTab<TextBox>(tabPage, "txtRegularTravel")?.SetValue(t => t.Text = regTrav.ToString("F2")); FindControlInTab<TextBox>(tabPage, "txtOvertimeTravel")?.SetValue(t => t.Text = otTrav.ToString("F2")); FindControlInTab<TextBox>(tabPage, "txtPremiumTravel")?.SetValue(t => t.Text = premTrav.ToString("F2"));
+
+            decimal regLab = resource.RegularLabourRate * discountFactor;
+            decimal otLab = resource.OvertimeLabourRate * discountFactor;
+            decimal premLab = resource.PremiumLabourRate * discountFactor;
+
+            decimal regTrav = resource.RegularTravelRate * discountFactor;
+            decimal otTrav = resource.OvertimeTravelRate * discountFactor;
+            decimal premTrav = resource.PremiumTravelRate * discountFactor;
+
+            if (resource.IsEmergency)
+            {
+                regLab = premLab;
+                otLab = premLab;
+                regTrav = premTrav;
+                otTrav = premTrav;
+            }
+
+            FindControlInTab<TextBox>(tabPage, "txtRegularLabour")?.SetValue(t => t.Text = regLab.ToString("F2"));
+            FindControlInTab<TextBox>(tabPage, "txtOvertimeLabour")?.SetValue(t => t.Text = otLab.ToString("F2"));
+            FindControlInTab<TextBox>(tabPage, "txtPremiumLabour")?.SetValue(t => t.Text = premLab.ToString("F2"));
+
+            FindControlInTab<TextBox>(tabPage, "txtRegularTravel")?.SetValue(t => t.Text = regTrav.ToString("F2"));
+            FindControlInTab<TextBox>(tabPage, "txtOvertimeTravel")?.SetValue(t => t.Text = otTrav.ToString("F2"));
+            FindControlInTab<TextBox>(tabPage, "txtPremiumTravel")?.SetValue(t => t.Text = premTrav.ToString("F2"));
         }
 
         private void CreateRatesSection(TabPage tabPage, CommissioningResource resource)
-        { /* ... same as corrected_csharp_code_v6 ... */
-            var g = new GroupBox { Name = "groupBoxRates", Text = "Rates & Discounts", Location = new Point(10, 10), Size = new Size(420, 180) }; tabPage.Controls.Add(g);
-            var cb = new ComboBox { Name = "comboBoxRateSheet", Location = new Point(120, 22), Size = new Size(200, 21), DropDownStyle = ComboBoxStyle.DropDownList }; cb.SelectedIndexChanged += (s, e) => { UpdateRatesOnResourceAndDisplay(tabPage, resource); UpdateResourceFromUI(resource); };
-            var nd = new NumericUpDown { Name = "numDiscount", Location = new Point(120, 52), Size = new Size(70, 20), Maximum = 100, Minimum = 0, DecimalPlaces = 2, Value = resource.DiscountPercent }; nd.ValueChanged += (s, e) => { UpdateRatesOnResourceAndDisplay(tabPage, resource); UpdateResourceFromUI(resource); };
-            var ce = new CheckBox { Name = "chkEmergency", Text = "Emergency Rates", Location = new Point(240, 52), AutoSize = true, Checked = resource.IsEmergency }; ce.CheckedChanged += (s, e) => { UpdateRatesOnResourceAndDisplay(tabPage, resource); UpdateResourceFromUI(resource); };
-            g.Controls.AddRange(new Control[] { new Label { Text = "Rate Sheet:", Location = new Point(15, 25), AutoSize = true }, cb, new Label { Text = "Discount:", Location = new Point(15, 55), AutoSize = true }, nd, new Label { Text = "%", Location = new Point(195, 55), AutoSize = true }, ce }); CreateRateDisplayLabels(g);
+        {
+            var g = new GroupBox
+            {
+                Name = "groupBoxRates",
+                Text = "Rates & Discounts",
+                Location = new Point(10, 10),
+                Size = new Size(420, 180)
+            };
+            tabPage.Controls.Add(g);
+
+            var cb = new ComboBox
+            {
+                Name = "comboBoxRateSheet",
+                Location = new Point(120, 22),
+                Size = new Size(200, 21),
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            cb.SelectedIndexChanged += (s, e) =>
+            {
+                UpdateRatesOnResourceAndDisplay(tabPage, resource);
+                UpdateResourceFromUI(resource);
+            };
+
+            var nd = new NumericUpDown
+            {
+                Name = "numDiscount",
+                Location = new Point(120, 52),
+                Size = new Size(70, 20),
+                Maximum = 100,
+                Minimum = 0,
+                DecimalPlaces = 2,
+                Value = resource.DiscountPercent
+            };
+            nd.ValueChanged += (s, e) =>
+            {
+                UpdateRatesOnResourceAndDisplay(tabPage, resource);
+                UpdateResourceFromUI(resource);
+            };
+
+            var ce = new CheckBox
+            {
+                Name = "chkEmergency",
+                Text = "Emergency Rates",
+                Location = new Point(240, 52),
+                AutoSize = true,
+                Checked = resource.IsEmergency
+            };
+            ce.CheckedChanged += (s, e) =>
+            {
+                UpdateRatesOnResourceAndDisplay(tabPage, resource);
+                UpdateResourceFromUI(resource);
+            };
+
+            g.Controls.AddRange(new Control[] {
+        new Label { Text = "Rate Sheet:", Location = new Point(15, 25), AutoSize = true },
+        cb,
+        new Label { Text = "Discount:", Location = new Point(15, 55), AutoSize = true },
+        nd,
+        new Label { Text = "%", Location = new Point(195, 55), AutoSize = true },
+        ce
+    });
+            CreateRateDisplayLabels(g);
         }
 
         private void CreateRateDisplayLabels(GroupBox pg)
-        { /* ... same as corrected_csharp_code_v6 ... */
-            int yS = 90, xL1 = 15, xT1 = 120, xU1 = 185, xL2 = 220, xT2 = 300, xU2 = 365; TextBox tRL = new TextBox { Name = "txtRegularLabour", Location = new Point(xT1, yS - 3), Size = new Size(60, 20), ReadOnly = true, TabStop = false }; TextBox tOL = new TextBox { Name = "txtOvertimeLabour", Location = new Point(xT1, yS + 22), Size = new Size(60, 20), ReadOnly = true, TabStop = false }; TextBox tPL = new TextBox { Name = "txtPremiumLabour", Location = new Point(xT1, yS + 47), Size = new Size(60, 20), ReadOnly = true, TabStop = false }; TextBox tRT = new TextBox { Name = "txtRegularTravel", Location = new Point(xT2, yS - 3), Size = new Size(60, 20), ReadOnly = true, TabStop = false }; TextBox tOT = new TextBox { Name = "txtOvertimeTravel", Location = new Point(xT2, yS + 22), Size = new Size(60, 20), ReadOnly = true, TabStop = false }; TextBox tPT = new TextBox { Name = "txtPremiumTravel", Location = new Point(xT2, yS + 47), Size = new Size(60, 20), ReadOnly = true, TabStop = false };
-            pg.Controls.AddRange(new Control[] { new Label { Text = "Regular Labour:", Location = new Point(xL1, yS), AutoSize = true }, tRL, new Label { Text = "/hr", Location = new Point(xU1, yS), AutoSize = true }, new Label { Text = "Overtime Labour:", Location = new Point(xL1, yS + 25), AutoSize = true }, tOL, new Label { Text = "/hr", Location = new Point(xU1, yS + 25), AutoSize = true }, new Label { Text = "Premium Labour:", Location = new Point(xL1, yS + 50), AutoSize = true }, tPL, new Label { Text = "/hr", Location = new Point(xU1, yS + 50), AutoSize = true }, new Label { Text = "Regular Travel:", Location = new Point(xL2, yS), AutoSize = true }, tRT, new Label { Text = "/hr", Location = new Point(xU2, yS), AutoSize = true }, new Label { Text = "Overtime Travel:", Location = new Point(xL2, yS + 25), AutoSize = true }, tOT, new Label { Text = "/hr", Location = new Point(xU2, yS + 25), AutoSize = true }, new Label { Text = "Premium Travel:", Location = new Point(xL2, yS + 50), AutoSize = true }, tPT, new Label { Text = "/hr", Location = new Point(xU2, yS + 50), AutoSize = true } });
+        {
+            int yS = 90, xL1 = 15, xT1 = 120, xU1 = 185;
+            int xL2 = 220, xT2 = 305, xU2 = 370;
+
+            TextBox tRL = new TextBox { Name = "txtRegularLabour", Location = new Point(xT1, yS - 3), Size = new Size(60, 20), ReadOnly = true, TabStop = false };
+            TextBox tOL = new TextBox { Name = "txtOvertimeLabour", Location = new Point(xT1, yS + 22), Size = new Size(60, 20), ReadOnly = true, TabStop = false };
+            TextBox tPL = new TextBox { Name = "txtPremiumLabour", Location = new Point(xT1, yS + 47), Size = new Size(60, 20), ReadOnly = true, TabStop = false };
+
+            TextBox tRT = new TextBox { Name = "txtRegularTravel", Location = new Point(xT2, yS - 3), Size = new Size(60, 20), ReadOnly = true, TabStop = false };
+            TextBox tOT = new TextBox { Name = "txtOvertimeTravel", Location = new Point(xT2, yS + 22), Size = new Size(60, 20), ReadOnly = true, TabStop = false };
+            TextBox tPT = new TextBox { Name = "txtPremiumTravel", Location = new Point(xT2, yS + 47), Size = new Size(60, 20), ReadOnly = true, TabStop = false };
+
+            pg.Controls.AddRange(new Control[] {
+        new Label { Text = "Regular Labour:", Location = new Point(xL1, yS), AutoSize = true }, tRL, new Label { Text = "/hr", Location = new Point(xU1, yS), AutoSize = true },
+        new Label { Text = "Overtime Labour:", Location = new Point(xL1, yS + 25), AutoSize = true }, tOL, new Label { Text = "/hr", Location = new Point(xU1, yS + 25), AutoSize = true },
+        new Label { Text = "Premium Labour:", Location = new Point(xL1, yS + 50), AutoSize = true }, tPL, new Label { Text = "/hr", Location = new Point(xU1, yS + 50), AutoSize = true },
+        new Label { Text = "Regular Travel:", Location = new Point(xL2, yS), AutoSize = true }, tRT, new Label { Text = "/hr", Location = new Point(xU2, yS), AutoSize = true },
+        new Label { Text = "Overtime Travel:", Location = new Point(xL2, yS + 25), AutoSize = true }, tOT, new Label { Text = "/hr", Location = new Point(xU2, yS + 25), AutoSize = true },
+        new Label { Text = "Premium Travel:", Location = new Point(xL2, yS + 50), AutoSize = true }, tPT, new Label { Text = "/hr", Location = new Point(xU2, yS + 50), AutoSize = true }
+    });
         }
+
         private void CreateDaysSection(TabPage tabPage, CommissioningResource resource)
-        { /* ... same as corrected_csharp_code_v6 ... */
-            var g = new GroupBox { Name = "groupBoxDays", Text = "Schedule Configuration", Location = new Point(440, 10), Size = new Size(420, 180) }; tabPage.Controls.Add(g);
-            NumericUpDown nDS = new NumericUpDown { Name = "numDaysOnSite", Location = new Point(170, 22), Size = new Size(60, 20), Minimum = 0, Maximum = 365, Value = resource.DaysOnSite }; nDS.ValueChanged += (s, e) => { UpdateResourceFromUI(resource); RegenerateSchedule(tabPage, resource); };
-            NumericUpDown nHPD = new NumericUpDown { Name = "numHoursPerDay", Location = new Point(170, 52), Size = new Size(60, 20), Minimum = 0, Maximum = 24, Value = resource.HoursPerDay, DecimalPlaces = 1, Increment = 0.5m }; nHPD.ValueChanged += (s, e) => { UpdateResourceFromUI(resource); RegenerateSchedule(tabPage, resource); };
-            DateTimePicker dtp = new DateTimePicker { Name = "dtpResourceStartDate", Location = new Point(170, 82), Size = new Size(120, 21), Value = resource.StartDate, Format = DateTimePickerFormat.Short }; dtp.ValueChanged += (s, e) => { UpdateResourceFromUI(resource); RegenerateSchedule(tabPage, resource); };
-            ComboBox cbST = new ComboBox { Name = "comboBoxStartTime", Location = new Point(170, 112), Size = new Size(100, 21), DropDownStyle = ComboBoxStyle.DropDownList }; cbST.SelectedIndexChanged += (s, e) => { UpdateResourceFromUI(resource); RegenerateSchedule(tabPage, resource); };
-            NumericUpDown nLD = new NumericUpDown { Name = "numLunchDuration", Location = new Point(170, 142), Size = new Size(60, 20), Minimum = 0, Maximum = 4, Value = resource.LunchDuration, DecimalPlaces = 1, Increment = 0.5m }; nLD.ValueChanged += (s, e) => { UpdateResourceFromUI(resource); RegenerateSchedule(tabPage, resource); };
-            g.Controls.AddRange(new Control[] { new Label { Text = "Work Days on Site:", Location = new Point(15, 25), AutoSize = true }, nDS, new Label { Text = "Default Work Hours/Day:", Location = new Point(15, 55), AutoSize = true }, nHPD, new Label { Text = "Resource Start Date:", Location = new Point(15, 85), AutoSize = true }, dtp, new Label { Text = "Default Daily Start Time:", Location = new Point(15, 115), AutoSize = true }, cbST, new Label { Text = "Lunch Duration (hours):", Location = new Point(15, 145), AutoSize = true }, nLD });
+        {
+            var g = new GroupBox
+            {
+                Name = "groupBoxDays",
+                Text = "Schedule Configuration",
+                Location = new Point(440, 10),
+                Size = new Size(420, 180)
+            };
+            tabPage.Controls.Add(g);
+
+            NumericUpDown nDS = new NumericUpDown
+            {
+                Name = "numDaysOnSite",
+                Location = new Point(170, 22),
+                Size = new Size(60, 20),
+                Minimum = 0,
+                Maximum = 365,
+                Value = resource.DaysOnSite
+            };
+            nDS.ValueChanged += (s, e) => { UpdateResourceFromUI(resource); RegenerateSchedule(tabPage, resource); };
+
+            NumericUpDown nHPD = new NumericUpDown
+            {
+                Name = "numHoursPerDay",
+                Location = new Point(170, 52),
+                Size = new Size(60, 20),
+                Minimum = 0,
+                Maximum = 24,
+                Value = resource.HoursPerDay,
+                DecimalPlaces = 1,
+                Increment = 0.5m
+            };
+            nHPD.ValueChanged += (s, e) => { UpdateResourceFromUI(resource); RegenerateSchedule(tabPage, resource); };
+
+            DateTimePicker dtp = new DateTimePicker
+            {
+                Name = "dtpResourceStartDate",
+                Location = new Point(170, 82),
+                Size = new Size(120, 21),
+                Value = resource.StartDate,
+                Format = DateTimePickerFormat.Short
+            };
+            dtp.ValueChanged += (s, e) => { UpdateResourceFromUI(resource); RegenerateSchedule(tabPage, resource); };
+
+            ComboBox cbST = new ComboBox
+            {
+                Name = "comboBoxStartTime",
+                Location = new Point(170, 112),
+                Size = new Size(100, 21),
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            cbST.SelectedIndexChanged += (s, e) => { UpdateResourceFromUI(resource); RegenerateSchedule(tabPage, resource); };
+
+            NumericUpDown nLD = new NumericUpDown
+            {
+                Name = "numLunchDuration",
+                Location = new Point(170, 142),
+                Size = new Size(60, 20),
+                Minimum = 0,
+                Maximum = 4,
+                Value = resource.LunchDuration,
+                DecimalPlaces = 1,
+                Increment = 0.5m
+            };
+            nLD.ValueChanged += (s, e) => { UpdateResourceFromUI(resource); RegenerateSchedule(tabPage, resource); };
+
+            g.Controls.AddRange(new Control[] {
+        new Label { Text = "Work Days on Site:", Location = new Point(15, 25), AutoSize = true }, nDS,
+        new Label { Text = "Default Work Hours/Day:", Location = new Point(15, 55), AutoSize = true }, nHPD,
+        new Label { Text = "Resource Start Date:", Location = new Point(15, 85), AutoSize = true }, dtp,
+        new Label { Text = "Default Daily Start Time:", Location = new Point(15, 115), AutoSize = true }, cbST,
+        new Label { Text = "Lunch Duration (hours):", Location = new Point(15, 145), AutoSize = true }, nLD
+    });
         }
+
         private void CreateTravelSection(TabPage tabPage, CommissioningResource resource)
-        { /* ... same as corrected_csharp_code_v6 ... */
-            var g = new GroupBox { Name = "groupBoxTravel", Text = "Travel", Location = new Point(10, 200), Size = new Size(420, 230) }; tabPage.Controls.Add(g); int y = 25;
-            CheckBox cSTT = new CheckBox { Name = "chkSeparateTravelTo", Text = "To Site", Location = new Point(220, y - 2), AutoSize = true, Checked = resource.SeparateTravelTo }; CheckBox cSTF = new CheckBox { Name = "chkSeparateTravelFrom", Text = "From Site", Location = new Point(300, y - 2), AutoSize = true, Checked = resource.SeparateTravelFrom }; cSTT.CheckedChanged += (s, e) => { UpdateResourceFromUI(resource); RegenerateSchedule(tabPage, resource); }; cSTF.CheckedChanged += (s, e) => { UpdateResourceFromUI(resource); RegenerateSchedule(tabPage, resource); }; y += 30;
-            ComboBox cbTM = new ComboBox { Name = "comboBoxTravelMethod", Location = new Point(220, y - 3), Size = new Size(180, 21), DropDownStyle = ComboBoxStyle.DropDownList }; cbTM.SelectedIndexChanged += (s, e) => UpdateResourceFromUI(resource); y += 30;
-            NumericUpDown nTD = new NumericUpDown { Name = "numTravelDistance", Location = new Point(220, y - 3), Size = new Size(75, 20), Maximum = 10000, Value = resource.TravelDistance }; nTD.ValueChanged += (s, e) => UpdateResourceFromUI(resource); y += 30;
-            NumericUpDown nTT = new NumericUpDown { Name = "numTravelTime", Location = new Point(220, y - 3), Size = new Size(75, 20), Maximum = 48, Increment = 0.5m, DecimalPlaces = 1, Value = resource.TravelTime }; nTT.ValueChanged += (s, e) => UpdateResourceFromUI(resource); y += 30;
-            NumericUpDown nDTD = new NumericUpDown { Name = "numDailyTravelDistance", Location = new Point(220, y - 3), Size = new Size(75, 20), Maximum = 1000, Value = resource.DailyTravelDistance }; nDTD.ValueChanged += (s, e) => UpdateResourceFromUI(resource); y += 30;
-            NumericUpDown nDTT = new NumericUpDown { Name = "numDailyTravelTime", Location = new Point(220, y - 3), Size = new Size(75, 20), Maximum = 24, Increment = 0.25m, DecimalPlaces = 2, Value = resource.DailyTravelTime }; nDTT.ValueChanged += (s, e) => UpdateResourceFromUI(resource);
-            g.Controls.AddRange(new Control[] { new Label { Text = "Separate Travel Days:", Location = new Point(15, 25), AutoSize = true }, cSTT, cSTF, new Label { Text = "Travel Method:", Location = new Point(15, 55), AutoSize = true }, cbTM, new Label { Text = "Travel Distance to Site Area (One Way):", Location = new Point(15, 85), AutoSize = true }, nTD, new Label { Text = "miles/km", Location = new Point(300, 85), AutoSize = true }, new Label { Text = "Travel Time (One Way):", Location = new Point(15, 115), AutoSize = true }, nTT, new Label { Text = "hours", Location = new Point(300, 115), AutoSize = true }, new Label { Text = "Daily Travel Distance (One Way):", Location = new Point(15, 145), AutoSize = true }, nDTD, new Label { Text = "miles/km", Location = new Point(300, 145), AutoSize = true }, new Label { Text = "Daily Travel Time (One Way):", Location = new Point(15, 175), AutoSize = true }, nDTT, new Label { Text = "hours", Location = new Point(300, 175), AutoSize = true } });
+        {
+            var g = new GroupBox
+            {
+                Name = "groupBoxTravel",
+                Text = "Travel",
+                Location = new Point(10, 200),
+                Size = new Size(420, 230)
+            };
+            tabPage.Controls.Add(g);
+            int y = 25;
+
+            CheckBox cSTT = new CheckBox { Name = "chkSeparateTravelTo", Text = "To", Location = new Point(220, y - 2), AutoSize = true, Checked = resource.SeparateTravelTo };
+            CheckBox cSTF = new CheckBox { Name = "chkSeparateTravelFrom", Text = "From", Location = new Point(300, y - 2), AutoSize = true, Checked = resource.SeparateTravelFrom };
+            cSTT.CheckedChanged += (s, e) => { UpdateResourceFromUI(resource); RegenerateSchedule(tabPage, resource); };
+            cSTF.CheckedChanged += (s, e) => { UpdateResourceFromUI(resource); RegenerateSchedule(tabPage, resource); };
+            y += 30;
+
+            ComboBox cbTM = new ComboBox { Name = "comboBoxTravelMethod", Location = new Point(290, y - 3), Size = new Size(60, 21), DropDownStyle = ComboBoxStyle.DropDownList };
+            cbTM.SelectedIndexChanged += (s, e) => UpdateResourceFromUI(resource);
+            y += 30;
+
+            NumericUpDown nTD = new NumericUpDown { Name = "numTravelDistance", Location = new Point(290, y - 3), Size = new Size(75, 20), Maximum = 10000, Value = resource.TravelDistance };
+            nTD.ValueChanged += (s, e) => UpdateResourceFromUI(resource);
+            y += 30;
+
+            NumericUpDown nTT = new NumericUpDown { Name = "numTravelTime", Location = new Point(290, y - 3), Size = new Size(75, 20), Maximum = 48, Increment = 0.5m, DecimalPlaces = 1, Value = resource.TravelTime };
+            nTT.ValueChanged += (s, e) => UpdateResourceFromUI(resource);
+            y += 30;
+
+            NumericUpDown nDTD = new NumericUpDown { Name = "numDailyTravelDistance", Location = new Point(290, y - 3), Size = new Size(75, 20), Maximum = 1000, Value = resource.DailyTravelDistance };
+            nDTD.ValueChanged += (s, e) => UpdateResourceFromUI(resource);
+            y += 30;
+
+            NumericUpDown nDTT = new NumericUpDown { Name = "numDailyTravelTime", Location = new Point(290, y - 3), Size = new Size(75, 20), Maximum = 24, Increment = 0.25m, DecimalPlaces = 2, Value = resource.DailyTravelTime };
+            nDTT.ValueChanged += (s, e) => UpdateResourceFromUI(resource);
+
+            g.Controls.AddRange(new Control[] {
+        new Label { Text = "Separate Travel Day", Location = new Point(15, 25), AutoSize = true }, cSTT, cSTF,
+        new Label { Text = "Travel Method to Site Area:", Location = new Point(15, 55), AutoSize = true }, cbTM,
+        new Label { Text = "Driving Distance to Site Area (First and Last Days Only):", Location = new Point(15, 85), AutoSize = true }, nTD, new Label { Text = "miles/km", Location = new Point(370, 85), AutoSize = true },
+        new Label { Text = "Total Travel Time to Site Area (Inlcuding Flight):", Location = new Point(15, 115), AutoSize = true }, nTT, new Label { Text = "hours", Location = new Point(370, 115), AutoSize = true },
+        new Label { Text = "Daily Travel Distance (One Way):", Location = new Point(15, 145), AutoSize = true }, nDTD, new Label { Text = "miles/km", Location = new Point(370, 145), AutoSize = true },
+        new Label { Text = "Daily Travel Time (One Way):", Location = new Point(15, 175), AutoSize = true }, nDTT, new Label { Text = "hours", Location = new Point(370, 175), AutoSize = true }
+    });
         }
+
         private void CreateExpensesSection(TabPage tabPage, CommissioningResource resource)
-        { /* ... same as corrected_csharp_code_v6 ... */
-            var g = new GroupBox { Name = "groupBoxExpenses", Text = "Expenses", Location = new Point(10, 440), Size = new Size(420, 220) }; tabPage.Controls.Add(g); int y = 25;
-            NumericUpDown nFC = new NumericUpDown { Name = "numFlightCost", Location = new Point(190, y - 3), Size = new Size(90, 20), Maximum = 10000, DecimalPlaces = 2, Value = resource.FlightCost }; nFC.ValueChanged += (s, e) => UpdateResourceFromUI(resource); y += 30;
-            CheckBox cRCR = new CheckBox { Name = "chkRentalCarRequired", Text = "Rental Car Required:", Location = new Point(15, y - 2), AutoSize = true, Checked = resource.RentalCarRequired }; NumericUpDown nRCR = new NumericUpDown { Name = "numRentalCarRate", Location = new Point(190, y - 3), Size = new Size(90, 20), Maximum = 500, DecimalPlaces = 2, Value = resource.RentalCarRate }; cRCR.CheckedChanged += (s, e) => UpdateResourceFromUI(resource); nRCR.ValueChanged += (s, e) => UpdateResourceFromUI(resource); y += 30;
-            CheckBox cHR = new CheckBox { Name = "chkHotelRequired", Text = "Hotel Required:", Location = new Point(15, y - 2), AutoSize = true, Checked = resource.HotelRequired }; NumericUpDown nHR = new NumericUpDown { Name = "numHotelRate", Location = new Point(190, y - 3), Size = new Size(90, 20), Maximum = 1000, DecimalPlaces = 2, Value = resource.HotelRate }; cHR.CheckedChanged += (s, e) => UpdateResourceFromUI(resource); nHR.ValueChanged += (s, e) => UpdateResourceFromUI(resource); y += 30;
-            NumericUpDown nMR = new NumericUpDown { Name = "numMileageRate", Location = new Point(190, y - 3), Size = new Size(90, 20), Maximum = 2, DecimalPlaces = 2, Increment = 0.01m, Value = resource.MileageRate }; nMR.ValueChanged += (s, e) => UpdateResourceFromUI(resource); y += 30;
-            NumericUpDown nPDR = new NumericUpDown { Name = "numPerDiemRate", Location = new Point(190, y - 3), Size = new Size(90, 20), Maximum = 500, DecimalPlaces = 2, Value = resource.PerDiemRate }; nPDR.ValueChanged += (s, e) => UpdateResourceFromUI(resource); y += 30;
-            NumericUpDown nOE = new NumericUpDown { Name = "numOtherExpenses", Location = new Point(190, y - 3), Size = new Size(90, 20), Maximum = 20000, DecimalPlaces = 2, Value = resource.OtherExpenses }; nOE.ValueChanged += (s, e) => UpdateResourceFromUI(resource);
-            g.Controls.AddRange(new Control[] { new Label { Text = "Flight Cost (Round Trip):", Location = new Point(15, 25), AutoSize = true }, nFC, cRCR, nRCR, new Label { Text = "per day", Location = new Point(285, 55), AutoSize = true }, cHR, nHR, new Label { Text = "per night", Location = new Point(285, 85), AutoSize = true }, new Label { Text = "Mileage Rate:", Location = new Point(15, 115), AutoSize = true }, nMR, new Label { Text = "per mile/km", Location = new Point(285, 115), AutoSize = true }, new Label { Text = "Per Diem:", Location = new Point(15, 145), AutoSize = true }, nPDR, new Label { Text = "per day", Location = new Point(285, 145), AutoSize = true }, new Label { Text = "Other Fixed Expenses:", Location = new Point(15, 175), AutoSize = true }, nOE });
+        {
+            var g = new GroupBox
+            {
+                Name = "groupBoxExpenses",
+                Text = "Expenses",
+                Location = new Point(10, 440),
+                Size = new Size(420, 220)
+            };
+            tabPage.Controls.Add(g);
+            int y = 25;
+
+            NumericUpDown nFC = new NumericUpDown { Name = "numFlightCost", Location = new Point(190, y - 3), Size = new Size(90, 20), Maximum = 10000, DecimalPlaces = 2, Value = resource.FlightCost };
+            nFC.ValueChanged += (s, e) => UpdateResourceFromUI(resource);
+            y += 30;
+
+            CheckBox cRCR = new CheckBox { Name = "chkRentalCarRequired", Text = "Rental Car", Location = new Point(15, y - 2), AutoSize = true, Checked = resource.RentalCarRequired };
+            NumericUpDown nRCR = new NumericUpDown { Name = "numRentalCarRate", Location = new Point(190, y - 3), Size = new Size(90, 20), Maximum = 500, DecimalPlaces = 2, Value = resource.RentalCarRate };
+            cRCR.CheckedChanged += (s, e) => UpdateResourceFromUI(resource);
+            nRCR.ValueChanged += (s, e) => UpdateResourceFromUI(resource);
+            y += 30;
+
+            CheckBox cHR = new CheckBox { Name = "chkHotelRequired", Text = "Hotel", Location = new Point(15, y - 2), AutoSize = true, Checked = resource.HotelRequired };
+            NumericUpDown nHR = new NumericUpDown { Name = "numHotelRate", Location = new Point(190, y - 3), Size = new Size(90, 20), Maximum = 1000, DecimalPlaces = 2, Value = resource.HotelRate };
+            cHR.CheckedChanged += (s, e) => UpdateResourceFromUI(resource);
+            nHR.ValueChanged += (s, e) => UpdateResourceFromUI(resource);
+            y += 30;
+
+            NumericUpDown nMR = new NumericUpDown { Name = "numMileageRate", Location = new Point(190, y - 3), Size = new Size(90, 20), Maximum = 2, DecimalPlaces = 2, Increment = 0.01m, Value = resource.MileageRate };
+            nMR.ValueChanged += (s, e) => UpdateResourceFromUI(resource);
+            y += 30;
+
+            NumericUpDown nPDR = new NumericUpDown { Name = "numPerDiemRate", Location = new Point(190, y - 3), Size = new Size(90, 20), Maximum = 500, DecimalPlaces = 2, Value = resource.PerDiemRate };
+            nPDR.ValueChanged += (s, e) => UpdateResourceFromUI(resource);
+            y += 30;
+
+            NumericUpDown nOE = new NumericUpDown { Name = "numOtherExpenses", Location = new Point(190, y - 3), Size = new Size(90, 20), Maximum = 20000, DecimalPlaces = 2, Value = resource.OtherExpenses };
+            nOE.ValueChanged += (s, e) => UpdateResourceFromUI(resource);
+
+            g.Controls.AddRange(new Control[] {
+        new Label { Text = "Flight Cost (Round Trip):", Location = new Point(15, 25), AutoSize = true }, nFC,
+        cRCR, nRCR, new Label { Text = "per day", Location = new Point(285, 55), AutoSize = true },
+        cHR, nHR, new Label { Text = "per night", Location = new Point(285, 85), AutoSize = true },
+        new Label { Text = "Mileage Rate:", Location = new Point(15, 115), AutoSize = true }, nMR, new Label { Text = "per mile/km", Location = new Point(285, 115), AutoSize = true },
+        new Label { Text = "Per Diem:", Location = new Point(15, 145), AutoSize = true }, nPDR, new Label { Text = "per day", Location = new Point(285, 145), AutoSize = true },
+        // new Label { Text = "Other Fixed Expenses:", Location = new Point(15, 175), AutoSize = true }, nOE
+    });
         }
         private void CreateScheduleSection(TabPage tabPage, CommissioningResource resource)
         {
@@ -430,7 +663,7 @@ namespace LabourBudgetCalculator
             var dtp = FindControlInTab<DateTimePicker>(tabPage, "dtpResourceStartDate"); if (dtp != null) dtp.Value = resource.StartDate;
             var cST = FindControlInTab<ComboBox>(tabPage, "comboBoxStartTime"); if (cST != null) { PopulateTime12HourCombo(cST); if (!string.IsNullOrEmpty(resource.DefaultStartTime)) cST.SelectedItem = ConvertTo12Hour(resource.DefaultStartTime); else cST.SelectedItem = ConvertTo12Hour("07:00"); }
             var nLD = FindControlInTab<NumericUpDown>(tabPage, "numLunchDuration"); if (nLD != null) nLD.Value = resource.LunchDuration;
-            var cTM = FindControlInTab<ComboBox>(tabPage, "comboBoxTravelMethod"); if (cTM != null) { cTM.Items.Clear(); cTM.Items.AddRange(new string[] { "Driving", "Flight", "Other" }); if (!string.IsNullOrEmpty(resource.TravelMethod) && cTM.Items.Contains(resource.TravelMethod)) cTM.SelectedItem = resource.TravelMethod; else cTM.SelectedIndex = 0; }
+            var cTM = FindControlInTab<ComboBox>(tabPage, "comboBoxTravelMethod"); if (cTM != null) { cTM.Items.Clear(); cTM.Items.AddRange(new string[] { "Driving", "Flight"}); if (!string.IsNullOrEmpty(resource.TravelMethod) && cTM.Items.Contains(resource.TravelMethod)) cTM.SelectedItem = resource.TravelMethod; else cTM.SelectedIndex = 0; }
         }
         private T FindControlInTab<T>(TabPage tabPage, string controlName) where T : Control => FindControlByName<T>(tabPage, controlName);
         private T FindControlByName<T>(Control parent, string name) where T : Control { if (parent == null) return null; foreach (Control c in parent.Controls) { if (c.Name == name && c is T typedControl) return typedControl; var foundChild = FindControlByName<T>(c, name); if (foundChild != null) return foundChild; } return null; }

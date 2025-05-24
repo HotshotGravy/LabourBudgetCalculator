@@ -103,6 +103,7 @@
     </Compile>
     <Compile Include="Helpers\CommissioningDataManager.cs" />
     <Compile Include="Helpers\DataManager.cs" />
+    <Compile Include="Helpers\HourCategorizerUtil.cs" />
     <Compile Include="MainForm.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -111,6 +112,7 @@
     </Compile>
     <Compile Include="Models\CalculationResult.cs" />
     <Compile Include="Models\CommissioningModels.cs" />
+    <Compile Include="Models\DailyHourBreakdown.cs" />
     <Compile Include="Models\RateSheet.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
