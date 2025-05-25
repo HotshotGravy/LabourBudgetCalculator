@@ -101,6 +101,9 @@
     <Compile Include="CommissioningResultsWindow.Designer.cs">
       <DependentUpon>CommissioningResultsWindow.cs</DependentUpon>
     </Compile>
+    <Compile Include="DoubleBufferedPanel.cs">
+      <SubType>Component</SubType>
+    </Compile>
     <Compile Include="Helpers\CommissioningDataManager.cs" />
     <Compile Include="Helpers\DataManager.cs" />
     <Compile Include="Helpers\ExpenseCalculator.cs" />

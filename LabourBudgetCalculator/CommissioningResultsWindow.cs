@@ -7,6 +7,7 @@ using System.IO;
 using System.Text;
 using LabourBudgetCalculator.Helpers;
 using LabourBudgetCalculator.Models;
+using System.Reflection;
 
 namespace LabourBudgetCalculator
 {
@@ -23,6 +24,7 @@ namespace LabourBudgetCalculator
 
         public CommissioningResultsWindow(CommissioningProject project)
         {
+            this.DoubleBuffered = true;
             InitializeComponent();
             _project = project ?? throw new ArgumentNullException(nameof(project));
 
@@ -58,13 +60,19 @@ namespace LabourBudgetCalculator
                 _summaryPanel = CreateSummaryPanel();
                 mainContainer.Controls.Add(_summaryPanel, 0, 0);
 
-                _mainPanel = new Panel();
+                _mainPanel = new DoubleBufferedPanel();
                 _mainPanel.Dock = DockStyle.Fill;
                 _mainPanel.AutoScroll = true;
                 _mainPanel.BorderStyle = BorderStyle.FixedSingle;
+                typeof(Panel).InvokeMember("DoubleBuffered",
+                                    BindingFlags.SetProperty | BindingFlags.Instance | BindingFlags.NonPublic,
+                                    null, _mainPanel, new object[] { true });
+
+
+
                 mainContainer.Controls.Add(_mainPanel, 0, 1);
 
-                _contentHostPanel = new Panel
+                _contentHostPanel = new DoubleBufferedPanel
                 {
                     Name = "contentHostPanel", // Good for debugging
                     Dock = DockStyle.None,     // Crucial: Do not dock, allow AutoSize to control size
@@ -72,9 +80,12 @@ namespace LabourBudgetCalculator
                     AutoSizeMode = AutoSizeMode.GrowAndShrink,
                     Location = Point.Empty     // Position at the top-left of _mainPanel's scrollable area
                 };
+
+                typeof(Panel).InvokeMember("DoubleBuffered",
+                    BindingFlags.SetProperty | BindingFlags.Instance | BindingFlags.NonPublic,
+                    null, _contentHostPanel, new object[] { true });
+
                 _mainPanel.Controls.Add(_contentHostPanel);
-
-
 
 
                 var buttonPanel = CreateButtonPanel();
@@ -349,6 +360,28 @@ namespace LabourBudgetCalculator
             }
         }
 
+        // Add this new method to CommissioningResultsWindow class
+        public void NotifyResourceDataChanged()
+        {
+            if (_project == null || _isClosing) return;
+
+            try
+            {
+            
+                _project.CalculateTotals();
+
+
+                MarkProjectDirty();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("Error in NotifyResourceDataChanged: " + ex.Message);
+                // Optionally, inform the user if appropriate, though for now, just logging.
+                // MessageBox.Show("An error occurred while updating project totals: " + ex.Message, "Update Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+
         internal void MarkProjectDirty()
         {
             if (_project != null)
@@ -433,11 +466,20 @@ namespace LabourBudgetCalculator
         private Button _toggleButton;
         private Dictionary<string, EditableCell> _editableCells;
 
+        private Dictionary<string, Label> _plannedLabels;
+        private Dictionary<string, Label> _deltaLabels;
+        private Dictionary<string, Label> _subtotalAndTotalLabels;
+
         public ResourcePanel(CommissioningResource resource, CommissioningResultsWindow parentWindow)
         {
+            this.DoubleBuffered = true;
             _resource = resource;
             _parentWindow = parentWindow;
             _editableCells = new Dictionary<string, EditableCell>();
+
+            _plannedLabels = new Dictionary<string, Label>();
+            _deltaLabels = new Dictionary<string, Label>();
+            _subtotalAndTotalLabels = new Dictionary<string, Label>();
 
             this.BorderStyle = BorderStyle.FixedSingle;
             this.MinimumSize = new Size(0, 400);
@@ -495,6 +537,44 @@ namespace LabourBudgetCalculator
             this.Controls.Add(headerPanel);
         }
 
+        private void UpdateSubtotalOrTotalRowLabels_InPlace(List<KeyValuePair<int, ResourceDayData>> orderedDays, string baseLabelTextForType, bool? isCharges)
+        {
+            foreach (var dayEntry in orderedDays)
+            {
+                ResourceDayData dayData = dayEntry.Value;
+                int dayKey = dayEntry.Key;
+
+                decimal plannedVal, actualVal, deltaVal;
+
+                if (isCharges.HasValue) // It's a subtotal row
+                {
+                    plannedVal = CalculateSubtotal(dayData, isCharges.Value, true);
+                    actualVal = CalculateSubtotal(dayData, isCharges.Value, false);
+                }
+                else // It's the grand "Totals" row for the day
+                {
+                    plannedVal = CalculateDayTotal(dayData, true);
+                    actualVal = CalculateDayTotal(dayData, false);
+                }
+                deltaVal = actualVal - plannedVal;
+
+                string cleanLabelText = baseLabelTextForType.Replace(" ", "").Replace("-", "");
+                string keyPrefix = isCharges.HasValue ? $"SUB_{cleanLabelText}" : $"TOTAL_Day";
+
+                if (_subtotalAndTotalLabels.TryGetValue($"{keyPrefix}_{dayKey}_P", out Label pLabel))
+                    pLabel.Text = plannedVal.ToString("C2");
+
+                if (_subtotalAndTotalLabels.TryGetValue($"{keyPrefix}_{dayKey}_A", out Label aLabel))
+                    aLabel.Text = actualVal.ToString("C2");
+
+                if (_subtotalAndTotalLabels.TryGetValue($"{keyPrefix}_{dayKey}_D", out Label dLabel))
+                {
+                    dLabel.Text = deltaVal.ToString("C2");
+                    SetDeltaLabelColor(dLabel, deltaVal);
+                }
+            }
+        }
+
         private void CreateGrid()
         {
             _gridPanel = new TableLayoutPanel();
@@ -519,6 +599,86 @@ namespace LabourBudgetCalculator
             {
                 this.AutoSize = true;
             }
+        }
+
+        private void RefreshGridDisplay()
+        {
+            if (_resource == null || _resource.DailyData == null || !_resource.DailyData.Any() || _gridPanel == null)
+            {
+                // If there's no data or grid, nothing to refresh.
+                // This also handles the case where the grid might have been cleared by an error.
+                return;
+            }
+
+            // Suspend layout on the grid panel to batch UI updates.
+            _gridPanel.SuspendLayout();
+
+            var orderedDays = _resource.DailyData
+                .Where(kvp => kvp.Value.Date != DateTime.MinValue)
+                .OrderBy(kvp => kvp.Value.Date)
+                .ToList();
+
+            // Fallback: If the number of columns expected based on orderedDays
+            // doesn't match the grid's current ColumnCount, or if no cells were stored,
+            // it indicates a structural change or failed initial population.
+            // In this case, a full repopulation might be safer.
+            int expectedColumnCount = 1 + (orderedDays.Count * 3);
+            if (_gridPanel.ColumnCount != expectedColumnCount ||
+                (!_editableCells.Any() && orderedDays.Any())) // Check if controls were stored
+            {
+                // If structure is wrong or controls aren't cached, do a full repopulate.
+                // PopulateData MUST be correctly storing all references now.
+                _gridPanel.Controls.Clear(); // Clear first for a full rebuild by PopulateData
+                _editableCells.Clear();
+                _plannedLabels.Clear();
+                _deltaLabels.Clear();
+                _subtotalAndTotalLabels.Clear();
+                PopulateData(); // This will call the modified Add... methods to store refs
+                _gridPanel.ResumeLayout(true);
+                return;
+            }
+
+            // --- Update existing controls ---
+
+            // Update Data Rows
+            string[] dataRowTypes = { "ServiceReg", "ServiceOT", "ServicePrem", "TravelReg", "TravelOT", "TravelPrem", "Mileage", "PerDiem", "Flight", "CarRental", "Hotel" };
+            foreach (string dataType in dataRowTypes)
+            {
+                foreach (var dayEntry in orderedDays)
+                {
+                    ResourceDayData dayData = dayEntry.Value;
+                    int dayKey = dayEntry.Key;
+
+                    decimal plannedValue = GetPlannedValue(dayData, dataType);
+                    decimal actualValue = GetActualValue(dayData, dataType);
+                    decimal delta = actualValue - plannedValue;
+
+                    if (_plannedLabels.TryGetValue($"P_{dataType}_{dayKey}", out Label plannedLabel))
+                    {
+                        plannedLabel.Text = FormatValue(plannedValue, dataType);
+                        if (IsHoursType(dataType) && plannedValue != 0) plannedLabel.Font = new Font(this.Font, FontStyle.Bold);
+                        else if (IsHoursType(dataType)) plannedLabel.Font = new Font(this.Font, FontStyle.Regular);
+                    }
+
+                    if (_editableCells.TryGetValue($"A_{dataType}_{dayKey}", out EditableCell actualCell))
+                    {
+                        actualCell.UpdateValueFromDayData(); // Ensure EditableCell has this method
+                    }
+
+                    if (_deltaLabels.TryGetValue($"D_{dataType}_{dayKey}", out Label deltaLabel))
+                    {
+                        deltaLabel.Text = FormatValue(delta, dataType);
+                        SetDeltaLabelColor(deltaLabel, delta);
+                    }
+                }
+            }
+
+            // Update Subtotal and Total Rows
+            UpdateSubtotalOrTotalRowLabels_InPlace(orderedDays, "Subtotals - Charges", true);
+            UpdateSubtotalOrTotalRowLabels_InPlace(orderedDays, "Subtotals - Expenses", false);
+            UpdateSubtotalOrTotalRowLabels_InPlace(orderedDays, "Totals", null); // null indicates grand total
+
+            _gridPanel.ResumeLayout(true);
         }
 
         private void PopulateData()
@@ -654,19 +814,30 @@ namespace LabourBudgetCalculator
 
         private void AddDataRow(int row, string rowLabel, List<KeyValuePair<int, ResourceDayData>> orderedDays, string dataType)
         {
-            var label = new Label();
-            label.Text = rowLabel;
-            label.TextAlign = ContentAlignment.MiddleLeft;
-            label.Dock = DockStyle.Fill;
-            label.Padding = new Padding(5, 0, 0, 0);
-            _gridPanel.Controls.Add(label, 0, row);
+            var headerLbl = new Label(); // This is the row header label, e.g., "Service (Reg)"
+            headerLbl.Text = rowLabel;
+            headerLbl.TextAlign = ContentAlignment.MiddleLeft;
+            headerLbl.Dock = DockStyle.Fill;
+            headerLbl.Padding = new Padding(5, 0, 0, 0);
+            _gridPanel.Controls.Add(headerLbl, 0, row);
 
-            int col = 1;
+            int currentGridCol = 1;
             foreach (var dayEntry in orderedDays)
             {
                 var dayData = dayEntry.Value;
+                int dayKey = dayEntry.Key; // Get the dayKey for unique identification
                 decimal plannedValue = GetPlannedValue(dayData, dataType);
                 decimal actualValue = GetActualValue(dayData, dataType);
+
+                decimal delta = actualValue - plannedValue;
+
+                // --- Planned Cell ---
+                var plannedLabel = CreateLabel(FormatValue(plannedValue, dataType), false); // Use a helper for formatting
+                plannedLabel.TextAlign = ContentAlignment.MiddleRight;
+                if (IsHoursType(dataType) && plannedValue != 0) plannedLabel.Font = new Font(this.Font, FontStyle.Bold);
+                _gridPanel.Controls.Add(plannedLabel, currentGridCol, row);
+                _plannedLabels[$"P_{dataType}_{dayKey}"] = plannedLabel; // Store reference
+
 
                 // For expense-related rows, ensure we're getting the latest calculated values
                 if (dataType == "Mileage" || dataType == "PerDiem" || dataType == "Flight" ||
@@ -740,73 +911,112 @@ namespace LabourBudgetCalculator
 
         private void AddSubtotalRow(int row, string labelText, List<KeyValuePair<int, ResourceDayData>> orderedDays, bool isCharges)
         {
-            var rowLabel = CreateLabel(labelText, true);
-            rowLabel.TextAlign = ContentAlignment.MiddleLeft;
-            rowLabel.BackColor = Color.LightYellow;
-            rowLabel.Padding = new Padding(5, 0, 0, 0);
-            _gridPanel.Controls.Add(rowLabel, 0, row);
+            var rowHeaderLabel = CreateLabel(labelText, true);
+            rowHeaderLabel.TextAlign = ContentAlignment.MiddleLeft;
+            rowHeaderLabel.BackColor = Color.LightYellow;
+            rowHeaderLabel.Padding = new Padding(5, 0, 0, 0);
+            _gridPanel.Controls.Add(rowHeaderLabel, 0, row);
 
-            int col = 1;
+            int currentGridCol = 1;
             foreach (var dayEntry in orderedDays)
             {
-                var dayData = dayEntry.Value;
+                ResourceDayData dayData = dayEntry.Value;
+                int dayKey = dayEntry.Key;
+
                 decimal plannedSubtotal = CalculateSubtotal(dayData, isCharges, true);
                 decimal actualSubtotal = CalculateSubtotal(dayData, isCharges, false);
-                decimal delta = actualSubtotal - plannedSubtotal;
+                decimal deltaSubtotal = actualSubtotal - plannedSubtotal;
 
-                AddValueCell(row, col, plannedSubtotal, true, null, Color.LightYellow); // null for dataType as it's always currency
-                AddValueCell(row, col + 1, actualSubtotal, true, null, Color.LightYellow); // null for dataType
-                AddDeltaCell(row, col + 2, delta, null, Color.LightYellow); // null for dataType
+                string cleanLabelText = labelText.Replace(" ", "").Replace("-", ""); // For a cleaner key
+                string baseKey = $"SUB_{cleanLabelText}_{dayKey}";
 
-                col += 3;
+                // Planned Subtotal
+                Label plannedLabel = CreateLabel(plannedSubtotal.ToString("C2"), true);
+                plannedLabel.TextAlign = ContentAlignment.MiddleRight;
+                plannedLabel.BackColor = Color.LightYellow;
+                _gridPanel.Controls.Add(plannedLabel, currentGridCol, row);
+                _subtotalAndTotalLabels[$"{baseKey}_P"] = plannedLabel;
+
+                // Actual Subtotal
+                Label actualLabel = CreateLabel(actualSubtotal.ToString("C2"), true);
+                actualLabel.TextAlign = ContentAlignment.MiddleRight;
+                actualLabel.BackColor = Color.LightYellow;
+                _gridPanel.Controls.Add(actualLabel, currentGridCol + 1, row);
+                _subtotalAndTotalLabels[$"{baseKey}_A"] = actualLabel;
+
+                // Delta Subtotal
+                Label deltaLabel = CreateLabel(deltaSubtotal.ToString("C2"), true);
+                deltaLabel.TextAlign = ContentAlignment.MiddleRight;
+                deltaLabel.BackColor = Color.LightYellow;
+                SetDeltaLabelColor(deltaLabel, deltaSubtotal);
+                _gridPanel.Controls.Add(deltaLabel, currentGridCol + 2, row);
+                _subtotalAndTotalLabels[$"{baseKey}_D"] = deltaLabel;
+
+                currentGridCol += 3;
             }
         }
 
         private void AddTotalsRow(int row, List<KeyValuePair<int, ResourceDayData>> orderedDays)
         {
-            var rowLabel = CreateLabel("Totals", true);
-            rowLabel.TextAlign = ContentAlignment.MiddleLeft;
-            rowLabel.BackColor = Color.Yellow;
-            rowLabel.Padding = new Padding(5, 0, 0, 0);
-            _gridPanel.Controls.Add(rowLabel, 0, row);
+            var rowHeaderLabel = CreateLabel("Totals", true);
+            rowHeaderLabel.TextAlign = ContentAlignment.MiddleLeft;
+            rowHeaderLabel.BackColor = Color.Yellow;
+            rowHeaderLabel.Padding = new Padding(5, 0, 0, 0);
+            _gridPanel.Controls.Add(rowHeaderLabel, 0, row);
 
-            int col = 1;
+            int currentGridCol = 1;
             foreach (var dayEntry in orderedDays)
             {
-                var dayData = dayEntry.Value;
+                ResourceDayData dayData = dayEntry.Value;
+                int dayKey = dayEntry.Key;
+
                 decimal plannedTotal = CalculateDayTotal(dayData, true);
                 decimal actualTotal = CalculateDayTotal(dayData, false);
-                decimal delta = actualTotal - plannedTotal;
+                decimal deltaTotal = actualTotal - plannedTotal;
 
-                AddValueCell(row, col, plannedTotal, true, null, Color.Yellow); // Always currency
-                AddValueCell(row, col + 1, actualTotal, true, null, Color.Yellow); // Always currency
-                AddDeltaCell(row, col + 2, delta, null, Color.Yellow); // Always currency
+                string baseKey = $"TOTAL_Day_{dayKey}";
 
-                col += 3;
+                // Planned Total
+                Label plannedLabel = CreateLabel(plannedTotal.ToString("C2"), true);
+                plannedLabel.TextAlign = ContentAlignment.MiddleRight;
+                plannedLabel.BackColor = Color.Yellow;
+                _gridPanel.Controls.Add(plannedLabel, currentGridCol, row);
+                _subtotalAndTotalLabels[$"{baseKey}_P"] = plannedLabel;
+
+                // Actual Total
+                Label actualLabel = CreateLabel(actualTotal.ToString("C2"), true);
+                actualLabel.TextAlign = ContentAlignment.MiddleRight;
+                actualLabel.BackColor = Color.Yellow;
+                _gridPanel.Controls.Add(actualLabel, currentGridCol + 1, row);
+                _subtotalAndTotalLabels[$"{baseKey}_A"] = actualLabel;
+
+                // Delta Total
+                Label deltaLabel = CreateLabel(deltaTotal.ToString("C2"), true);
+                deltaLabel.TextAlign = ContentAlignment.MiddleRight;
+                deltaLabel.BackColor = Color.Yellow;
+                SetDeltaLabelColor(deltaLabel, deltaTotal);
+                _gridPanel.Controls.Add(deltaLabel, currentGridCol + 2, row);
+                _subtotalAndTotalLabels[$"{baseKey}_D"] = deltaLabel;
+
+                currentGridCol += 3;
             }
         }
 
         // Modified AddValueCell to accept dataType for formatting
         // Modified AddValueCell to accept dataType for formatting and make non-zero hours bold
+        // Modify AddValueCell
         private void AddValueCell(int row, int col, decimal value, bool isBold, string dataType, Color? backColor = null)
         {
             var label = new Label();
-
+            // ... (existing formatting logic for label.Text and Font) ...
             if (dataType != null && (dataType.StartsWith("Service") || dataType.StartsWith("Travel")))
             {
-                label.Text = value.ToString("F1"); // Format as hours with 1 decimal
-
-                // Make non-zero hour values bold
-                if (value != 0)
-                {
-                    // If already supposed to be bold due to isBold parameter, keep it bold
-                    // Otherwise, make it bold because value is non-zero
-                    isBold = true;
-                }
+                label.Text = value.ToString("F1");
+                if (value != 0) isBold = true;
             }
             else
             {
-                label.Text = value.ToString("C2"); // Format as currency
+                label.Text = value.ToString("C2");
             }
 
             label.TextAlign = ContentAlignment.MiddleRight;
@@ -817,6 +1027,8 @@ namespace LabourBudgetCalculator
                 label.BackColor = backColor.Value;
 
             _gridPanel.Controls.Add(label, col, row);
+
+       
         }
 
         private void AddEditableCell(int row, int col, decimal value, string dataType, int dayKey, ResourceDayData dayData, Color? backColor = null)
@@ -968,11 +1180,13 @@ namespace LabourBudgetCalculator
 
         internal void NotifyValueChanged()
         {
-            // Recalculate expenses when values change
-            Helpers.ExpenseCalculator.CalculateResourceExpenses(_resource);
+           
+            _resource.CalculateResourceTotals();
 
+            RefreshGridDisplay();
             UpdateTotalLabel();
-            _parentWindow.MarkProjectDirty();
+
+            _parentWindow.NotifyResourceDataChanged();
         }
 
         internal void AppendCSVData(StringBuilder sb)
@@ -1065,6 +1279,35 @@ namespace LabourBudgetCalculator
             _parentPanel = parentPanel;
 
             InitializeControls();
+        }
+
+        public void UpdateValueFromDayData()
+        {
+            // Get the latest actual value directly from the _dayData object
+            // _parentPanel.GetActualValue is a helper in ResourcePanel
+            if (_parentPanel != null && _dayData != null)
+            {
+                _value = _parentPanel.GetActualValue(_dayData, _dataType);
+            }
+
+            // Update the label's text and font style based on the new _value
+            if (_dataType.StartsWith("Service") || _dataType.StartsWith("Travel"))
+            {
+                _label.Text = _value.ToString("F1"); // Hours format
+                _label.Font = new Font(_label.Font, _value != 0 ? FontStyle.Bold : FontStyle.Regular);
+            }
+            else
+            {
+                _label.Text = _value.ToString("C2"); // Currency format
+            }
+            // If the textbox is somehow visible, update it too, though it shouldn't be.
+            if (_textBox.Visible)
+            {
+                if (_dataType.StartsWith("Service") || _dataType.StartsWith("Travel"))
+                    _textBox.Text = _value.ToString("F1");
+                else
+                    _textBox.Text = _value.ToString("F2");
+            }
         }
 
         public override Color BackColor
