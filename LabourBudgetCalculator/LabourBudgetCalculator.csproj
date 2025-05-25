@@ -101,6 +101,9 @@
     <Compile Include="CommissioningResultsWindow.Designer.cs">
       <DependentUpon>CommissioningResultsWindow.cs</DependentUpon>
     </Compile>
+    <Compile Include="DoubleBufferedFlowLayoutPanel.cs">
+      <SubType>Component</SubType>
+    </Compile>
     <Compile Include="DoubleBufferedPanel.cs">
       <SubType>Component</SubType>
     </Compile>
