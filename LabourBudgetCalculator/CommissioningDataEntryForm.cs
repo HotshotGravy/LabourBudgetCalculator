@@ -33,11 +33,27 @@ namespace LabourBudgetCalculator
 
             CommissioningDataManager.Instance.SetCurrentProject(this.currentProject);
 
+
             SetupForm();
             LoadData();
             SetupControls();
             SetupAutoSave();
             SetupScheduleUpdateTimer();
+        }
+
+        private void EnableDoubleBuffering()
+        {
+            // Enable double buffering for the entire form
+            this.DoubleBuffered = true;
+
+            // Enable double buffering for the tab control
+            if (tabResources != null)
+            {
+                typeof(TabControl).GetProperty("DoubleBuffered",
+                    System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic)
+                    .SetValue(tabResources, true, null);
+            }
         }
 
         private void SetupForm()

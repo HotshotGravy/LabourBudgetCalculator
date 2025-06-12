@@ -24,10 +24,50 @@ namespace LabourBudgetCalculator
         private bool _isClosing = false;
         private Panel _contentHostPanel;
 
+        private void EnableDoubleBuffering()
+        {
+            // Enable double buffering for the entire form
+            this.DoubleBuffered = true;
+
+            // Enable double buffering for any DataGridViews
+            foreach (Control control in this.Controls)
+            {
+                if (control is DataGridView dataGridView)
+                {
+                    // Use reflection to set the protected DoubleBuffered property
+                    typeof(DataGridView).GetProperty("DoubleBuffered",
+                        System.Reflection.BindingFlags.Instance |
+                        System.Reflection.BindingFlags.NonPublic)
+                        .SetValue(dataGridView, true, null);
+                }
+            }
+        }
+        private void OptimizeDataGridView(DataGridView grid)
+        {
+            if (grid == null) return;
+
+            // Double buffer the grid for better performance
+            typeof(DataGridView).GetProperty("DoubleBuffered",
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic)
+                .SetValue(grid, true, null);
+
+            // Only redraw when necessary
+            grid.RowHeadersVisible = false;
+            grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
+
+            // Speed up load times
+            grid.VirtualMode = true;
+
+            // Enable full row selection to improve selection performance
+            grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+        }
+
         public CommissioningResultsWindow(CommissioningProject project)
         {
             this.DoubleBuffered = true;
             InitializeComponent();
+            EnableDoubleBuffering();
             _project = project ?? throw new ArgumentNullException(nameof(project));
 
             this.Text = $"Results - {_project.ProjectName}";
@@ -41,6 +81,8 @@ namespace LabourBudgetCalculator
                 RefreshData();
             };
         }
+
+
 
         private void SetupUI()
         {
