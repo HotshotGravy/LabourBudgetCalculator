@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.Xml;
+using System.IO;
 using System.Windows.Forms;
 using TimeExpenseCalculator.Models;
 using TimeExpenseCalculator.Helpers;
@@ -25,6 +27,35 @@ namespace LabourBudgetCalculator
         private CommissioningResource pendingUpdateResource;
         private TabPage pendingUpdateTabPage;
 
+        // Add these properties near the top of the CommissioningDataEntryForm class
+        private bool isDarkMode = false;
+        private Button btnDarkMode;
+        private Color darkBackColor = Color.FromArgb(40, 44, 52);
+        private Color darkTextColor = Color.FromArgb(220, 223, 228);
+        private Color darkControlBackColor = Color.FromArgb(54, 60, 69);
+        private Color darkBorderColor = Color.FromArgb(90, 100, 120);
+        private Color darkButtonBackColor = Color.FromArgb(60, 70, 85);
+        private Color darkButtonForeColor = Color.FromArgb(220, 223, 228);
+        private Color darkPanelBackColor = Color.FromArgb(50, 55, 65);
+        private Color darkGridBackColor = Color.FromArgb(45, 50, 60);
+        private Color darkGridHeaderBackColor = Color.FromArgb(60, 70, 85);
+        private Color darkGridCellBackColor = Color.FromArgb(55, 65, 80);
+
+        // Dark mode color scheme for day panels
+        private Color darkModeTravelDay = Color.FromArgb(130, 110, 30); // Darker yellow
+        private Color darkModeWorkDay = Color.FromArgb(30, 80, 130);    // Darker blue
+        private Color darkModeHoldoverDay = Color.FromArgb(30, 130, 70); // Darker green
+
+        // Light mode original colors (for toggling back)
+        private Color lightBackColor;
+        private Color lightTextColor;
+        private Color lightControlBackColor;
+        private Color lightPanelBackColor;
+        private Color lightGridBackColor;
+        private Color lightTravelDay = Color.Yellow;
+        private Color lightWorkDay = Color.LightBlue;
+        private Color lightHoldoverDay = Color.LightGreen;
+
         public CommissioningDataEntryForm(CommissioningProject project)
         {
             InitializeComponent();
@@ -39,6 +70,14 @@ namespace LabourBudgetCalculator
             SetupControls();
             SetupAutoSave();
             SetupScheduleUpdateTimer();
+        }
+        // Add this enum to define day types
+        private enum DayType
+        {
+            Work,
+            Travel,
+            Holdover,
+            Nil
         }
 
         private void EnableDoubleBuffering()
@@ -56,6 +95,160 @@ namespace LabourBudgetCalculator
             }
         }
 
+        private void UpdateDayPanelColors(Panel dayPanel, ResourceDayData dayData, CommissioningResource resource)
+        {
+            if (dayPanel == null || dayData == null || resource == null) return;
+
+            try
+            {
+                // Determine day type based on the data and resource configuration
+                DayType dayType = DetermineDayType(dayData, resource);
+
+                // Apply color based on day type and current theme
+                Color panelColor = GetColorForDayType(dayType);
+                dayPanel.BackColor = panelColor;
+
+                // Update all labels in the panel to have transparent backgrounds and proper text color
+                foreach (Control control in dayPanel.Controls)
+                {
+                    if (control is Label label)
+                    {
+                        label.BackColor = Color.Transparent;
+                        label.ForeColor = isDarkMode ? Color.White : SystemColors.ControlText;
+
+                        // Special handling for weekend days
+                        if (IsWeekendDay(dayData.Date))
+                        {
+                            label.ForeColor = isDarkMode ? Color.Yellow : Color.Gray;
+                            if (label.Name.Contains("dayOfWeek"))
+                            {
+                                label.Font = new Font(label.Font, FontStyle.Bold);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error updating day panel colors: {ex.Message}");
+            }
+        }
+
+        private DayType DetermineDayType(ResourceDayData dayData, CommissioningResource resource)
+        {
+            // Check if it's a travel day (separate travel to/from site)
+            if (IsTravelDay(dayData, resource))
+            {
+                return DayType.Travel;
+            }
+
+            // Check if it's a holdover day (typically weekends with 8 hours regular rate)
+           
+
+            // Check if there are any hours planned for this day
+            decimal totalHours = dayData.GetPlannedLabourHoursTotal() + dayData.GetPlannedTravelHoursTotal();
+            if (totalHours <= 0)
+            {
+                return DayType.Nil;
+            }
+
+            // Default to work day
+            return DayType.Work;
+        }
+
+        private bool IsTravelDay(ResourceDayData dayData, CommissioningResource resource)
+        {
+            // Get the resource's daily data ordered by date
+            var orderedDays = resource.DailyData.Values.OrderBy(d => d.Date).ToList();
+            if (!orderedDays.Any()) return false;
+
+            // Check if this is the first day and separate travel TO is enabled
+            if (resource.SeparateTravelTo && dayData.Date.Date == orderedDays.First().Date.Date)
+            {
+                // First day with separate travel TO - should be travel day
+                return dayData.GetPlannedTravelHoursTotal() > 0 && dayData.GetPlannedLabourHoursTotal() == 0;
+            }
+
+            // Check if this is the last day and separate travel FROM is enabled
+            if (resource.SeparateTravelFrom && dayData.Date.Date == orderedDays.Last().Date.Date)
+            {
+                // Last day with separate travel FROM - should be travel day
+                return dayData.GetPlannedTravelHoursTotal() > 0 && dayData.GetPlannedLabourHoursTotal() == 0;
+            }
+
+            return false;
+        }
+
+        private bool IsHoldoverDay(ResourceDayData dayData, CommissioningResource resource)
+        {
+            // Holdover days are typically weekend days with 8 hours at regular rate
+            DayOfWeek dayOfWeek = dayData.Date.DayOfWeek;
+            bool isWeekend = (dayOfWeek == DayOfWeek.Saturday || dayOfWeek == DayOfWeek.Sunday);
+
+            if (isWeekend)
+            {
+                // Check if it has exactly 8 hours of labour with no overtime/premium
+                return dayData.PlannedRegularLabourHours == 8 &&
+                       dayData.PlannedOvertimeLabourHours == 0 &&
+                       dayData.PlannedPremiumLabourHours == 0;
+            }
+
+            return false;
+        }
+
+        private bool IsWeekendDay(DateTime date)
+        {
+            DayOfWeek dayOfWeek = date.DayOfWeek;
+            return dayOfWeek == DayOfWeek.Saturday || dayOfWeek == DayOfWeek.Sunday;
+        }
+
+        private Color GetColorForDayType(DayType dayType)
+        {
+            switch (dayType)
+            {
+                case DayType.Travel:
+                    return isDarkMode ? darkModeTravelDay : lightTravelDay;
+                case DayType.Work:
+                    return isDarkMode ? darkModeWorkDay : lightWorkDay;
+                case DayType.Holdover:
+                    return isDarkMode ? darkModeHoldoverDay : lightHoldoverDay;
+                case DayType.Nil:
+                    return isDarkMode ? darkControlBackColor : SystemColors.Control;
+                default:
+                    return isDarkMode ? darkModeWorkDay : lightWorkDay;
+            }
+        }
+
+        private void UpdateAllDayPanelsInSchedule(Panel schedulePanel, CommissioningResource resource)
+        {
+            if (schedulePanel == null || resource?.DailyData == null) return;
+
+            // Find all day panels in the schedule
+            foreach (Control control in schedulePanel.Controls)
+            {
+                if (control is FlowLayoutPanel weekPanel)
+                {
+                    foreach (Control dayControl in weekPanel.Controls)
+                    {
+                        if (dayControl is Panel dayPanel && dayPanel.Name.StartsWith("dayPanel_"))
+                        {
+                            // Extract date from panel name
+                            string datePart = dayPanel.Name.Replace("dayPanel_", "");
+                            if (DateTime.TryParseExact(datePart, "yyyyMMdd", null, System.Globalization.DateTimeStyles.None, out DateTime panelDate))
+                            {
+                                // Find matching day data
+                                ResourceDayData dayData = resource.DailyData.Values.FirstOrDefault(d => d.Date.Date == panelDate.Date);
+                                if (dayData != null)
+                                {
+                                    // Update colors for this day panel
+                                    UpdateDayPanelColors(dayPanel, dayData, resource);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         private void SetupForm()
         {
             this.Text = $"Commissioning Data Entry - {currentProject.ProjectName}";
@@ -103,6 +296,29 @@ namespace LabourBudgetCalculator
                 Anchor = AnchorStyles.Bottom | AnchorStyles.Left // Same anchoring as other bottom buttons
             };
 
+            // Inside the SetupControls method, after creating the other buttons
+            Button btnDarkMode = new Button
+            {
+                Name = "btnDarkMode",
+                Text = "Toggle Dark Mode",
+                Size = new Size(120, 30),
+                Location = new Point(btnReset.Right + 6, btnReset.Top),
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Left
+            };
+
+            btnDarkMode.Click += (sender, e) => ToggleDarkMode();
+            this.Controls.Add(btnDarkMode);
+
+            // Store light theme colors for later use
+            lightBackColor = this.BackColor;
+            lightTextColor = this.ForeColor;
+            lightControlBackColor = SystemColors.Control;
+            lightPanelBackColor = SystemColors.Control;
+            lightGridBackColor = SystemColors.Window;
+
+            // Load saved dark mode preference
+            LoadDarkModePreference();
+
             Button btnBackToProjects = new Button
             {
                 Name = "btnBackToProjects",
@@ -146,6 +362,8 @@ namespace LabourBudgetCalculator
             else { AddNewResource(); }
             if (tabResources.TabPages.Count > 0) tabResources.SelectedIndex = 0;
         }
+
+
 
         private void BtnBackToProjects_Click(object sender, EventArgs e)
         {
@@ -196,6 +414,315 @@ namespace LabourBudgetCalculator
             {
                 MessageBox.Show($"Error returning to project selection: {ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void ToggleDarkMode()
+        {
+            isDarkMode = !isDarkMode;
+            ApplyTheme();
+            SaveDarkModePreference();
+
+            // Update results window if open
+            if (_resultsWindow is CommissioningResultsWindow resultsWindow)
+            {
+               // resultsWindow.SetDarkMode(isDarkMode);
+            }
+        }
+
+        private void ApplyTheme()
+        {
+            if (isDarkMode)
+            {
+                // Apply dark theme
+                this.BackColor = darkBackColor;
+                this.ForeColor = darkTextColor;
+
+                // Update button appearance to indicate it's in dark mode
+                btnDarkMode.BackColor = darkButtonBackColor;
+                btnDarkMode.ForeColor = darkButtonForeColor;
+
+                // Apply dark theme to all group boxes
+                foreach (Control control in this.Controls)
+                {
+                    if (control is GroupBox)
+                    {
+                        ApplyDarkThemeToControl(control);
+                    }
+                }
+
+                // Apply dark theme to tab control and all tab pages
+                if (tabResources != null)
+                {
+                    ApplyDarkThemeToControl(tabResources);
+                    foreach (TabPage tabPage in tabResources.TabPages)
+                    {
+                        ApplyDarkThemeToControl(tabPage);
+                    }
+                }
+
+                // Update day panels with dark theme colors
+                UpdateDayPanelsTheme();
+            }
+            else
+            {
+                // Restore light theme
+                this.BackColor = lightBackColor;
+                this.ForeColor = lightTextColor;
+
+                // Update button appearance to indicate it's in light mode
+                btnDarkMode.BackColor = SystemColors.Control;
+                btnDarkMode.ForeColor = SystemColors.ControlText;
+
+                // Restore light theme to all group boxes
+                foreach (Control control in this.Controls)
+                {
+                    if (control is GroupBox)
+                    {
+                        ApplyLightThemeToControl(control);
+                    }
+                }
+
+                // Restore light theme to tab control and all tab pages
+                if (tabResources != null)
+                {
+                    ApplyLightThemeToControl(tabResources);
+                    foreach (TabPage tabPage in tabResources.TabPages)
+                    {
+                        ApplyLightThemeToControl(tabPage);
+                    }
+                }
+
+                // Update day panels with light theme colors
+                UpdateDayPanelsTheme();
+            }
+        }
+
+        // Add recursive methods to apply themes to controls
+        private void ApplyDarkThemeToControl(Control control)
+        {
+            control.BackColor = darkControlBackColor;
+            control.ForeColor = Color.White;
+
+            if (control is TextBox)
+            {
+                TextBox textBox = (TextBox)control;
+                textBox.BackColor = darkPanelBackColor;
+                textBox.ForeColor = Color.White;
+                textBox.BorderStyle = BorderStyle.FixedSingle;
+            }
+            else if (control is Button)
+            {
+                Button button = (Button)control;
+                button.BackColor = darkButtonBackColor;
+                button.ForeColor = Color.White;
+                button.FlatStyle = FlatStyle.Flat;
+                button.FlatAppearance.BorderColor = darkBorderColor;
+            }
+            else if (control is Panel)
+            {
+                Panel panel = (Panel)control;
+                // For day panels, only set the border style but not the background
+                if (panel.Name.StartsWith("dayPanel"))
+                {
+                    panel.BorderStyle = BorderStyle.FixedSingle;
+                    // Make label backgrounds transparent for day panels
+                    foreach (Control childControl in panel.Controls)
+                    {
+                        if (childControl is Label)
+                        {
+                            Label label = (Label)childControl;
+                            label.BackColor = Color.Transparent;
+                            label.ForeColor = Color.White;
+                        }
+                    }
+                }
+                else
+                {
+                    panel.BackColor = darkPanelBackColor;
+                    panel.BorderStyle = BorderStyle.FixedSingle;
+                }
+            }
+            else if (control is ComboBox)
+            {
+                ComboBox comboBox = (ComboBox)control;
+                comboBox.BackColor = darkPanelBackColor;
+                comboBox.ForeColor = Color.White;
+            }
+            else if (control is NumericUpDown)
+            {
+                NumericUpDown numericUpDown = (NumericUpDown)control;
+                numericUpDown.BackColor = darkPanelBackColor;
+                numericUpDown.ForeColor = Color.White;
+            }
+            else if (control is DateTimePicker)
+            {
+                DateTimePicker dateTimePicker = (DateTimePicker)control;
+                dateTimePicker.BackColor = darkPanelBackColor;
+                dateTimePicker.ForeColor = Color.White;
+                dateTimePicker.CalendarForeColor = Color.White;
+                dateTimePicker.CalendarMonthBackground = darkGridBackColor;
+            }
+            else if (control is TabControl)
+            {
+                control.BackColor = darkControlBackColor;
+                control.ForeColor = Color.White;
+            }
+            else if (control is TabPage)
+            {
+                control.BackColor = darkControlBackColor;
+                control.ForeColor = Color.White;
+            }
+
+            // Recursively apply to child controls
+            foreach (Control child in control.Controls)
+            {
+                ApplyDarkThemeToControl(child);
+            }
+        }
+
+        private void ApplyLightThemeToControl(Control control)
+        {
+            control.BackColor = lightControlBackColor;
+            control.ForeColor = lightTextColor;
+
+            if (control is TextBox)
+            {
+                TextBox textBox = (TextBox)control;
+                textBox.BackColor = SystemColors.Window;
+                textBox.ForeColor = SystemColors.WindowText;
+                textBox.BorderStyle = BorderStyle.Fixed3D;
+            }
+            else if (control is Button)
+            {
+                Button button = (Button)control;
+                button.BackColor = SystemColors.Control;
+                button.ForeColor = SystemColors.ControlText;
+                button.FlatStyle = FlatStyle.Standard;
+            }
+            else if (control is Panel)
+            {
+                Panel panel = (Panel)control;
+                // Don't change day panel colors here, handle in UpdateDayPanelsTheme
+                if (!panel.Name.StartsWith("dayPanel"))
+                {
+                    panel.BackColor = SystemColors.Control;
+                    panel.BorderStyle = BorderStyle.FixedSingle;
+                }
+            }
+            else if (control is ComboBox)
+            {
+                ComboBox comboBox = (ComboBox)control;
+                comboBox.BackColor = SystemColors.Window;
+                comboBox.ForeColor = SystemColors.WindowText;
+            }
+            else if (control is NumericUpDown)
+            {
+                NumericUpDown numericUpDown = (NumericUpDown)control;
+                numericUpDown.BackColor = SystemColors.Window;
+                numericUpDown.ForeColor = SystemColors.WindowText;
+            }
+            else if (control is DateTimePicker)
+            {
+                DateTimePicker dateTimePicker = (DateTimePicker)control;
+                dateTimePicker.BackColor = SystemColors.Window;
+                dateTimePicker.ForeColor = SystemColors.WindowText;
+                dateTimePicker.CalendarForeColor = SystemColors.WindowText;
+                dateTimePicker.CalendarMonthBackground = SystemColors.Window;
+            }
+            else if (control is TabControl)
+            {
+                control.BackColor = SystemColors.Control;
+                control.ForeColor = SystemColors.ControlText;
+            }
+            else if (control is TabPage)
+            {
+                control.BackColor = SystemColors.Control;
+                control.ForeColor = SystemColors.ControlText;
+            }
+
+            // Recursively apply to child controls
+            foreach (Control child in control.Controls)
+            {
+                ApplyLightThemeToControl(child);
+            }
+        }
+
+        // Add methods to save and load dark mode preference using settings
+        private void SaveDarkModePreference()
+        {
+            try
+            {
+                // Create an XML settings file in the application directory
+                string settingsPath = Path.Combine(
+                    Path.GetDirectoryName(Application.ExecutablePath),
+                    "CommissioningSettings.xml");
+
+                XmlDocument doc = new XmlDocument();
+                XmlElement root;
+
+                if (File.Exists(settingsPath))
+                {
+                    doc.Load(settingsPath);
+                    root = doc.DocumentElement;
+                }
+                else
+                {
+                    root = doc.CreateElement("Settings");
+                    doc.AppendChild(root);
+                }
+
+                // Update or create the DarkMode element
+                XmlElement darkModeElement = null;
+                foreach (XmlElement element in root.GetElementsByTagName("DarkMode"))
+                {
+                    darkModeElement = element;
+                    break;
+                }
+
+                if (darkModeElement == null)
+                {
+                    darkModeElement = doc.CreateElement("DarkMode");
+                    root.AppendChild(darkModeElement);
+                }
+
+                darkModeElement.InnerText = isDarkMode.ToString();
+                doc.Save(settingsPath);
+            }
+            catch (Exception ex)
+            {
+                // Log error but don't crash
+                System.Diagnostics.Debug.WriteLine($"Error saving dark mode preference: {ex.Message}");
+            }
+        }
+
+        private void LoadDarkModePreference()
+        {
+            try
+            {
+                string settingsPath = Path.Combine(
+                    Path.GetDirectoryName(Application.ExecutablePath),
+                    "CommissioningSettings.xml");
+
+                if (File.Exists(settingsPath))
+                {
+                    XmlDocument doc = new XmlDocument();
+                    doc.Load(settingsPath);
+
+                    XmlNodeList darkModeNodes = doc.GetElementsByTagName("DarkMode");
+                    if (darkModeNodes.Count > 0)
+                    {
+                        bool.TryParse(darkModeNodes[0].InnerText, out isDarkMode);
+
+                        // Apply theme based on loaded preference
+                        ApplyTheme();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log error but don't crash
+                System.Diagnostics.Debug.WriteLine($"Error loading dark mode preference: {ex.Message}");
             }
         }
 
@@ -869,6 +1396,7 @@ namespace LabourBudgetCalculator
                     { // Ensure we have a valid entry and its key
                         dayBox.BackColor = SystemColors.Window; lblDateOnly.Font = new Font(dayBox.Font, FontStyle.Bold);
                         CreateDayContent_Planning(dayBox, dayKeyForBox, dayEntryForBox, resource);
+                        UpdateDayPanelColors(dayBox, dayEntryForBox, resource);
                     }
                     else { dayBox.BackColor = SystemColors.ControlLight; lblDateOnly.ForeColor = SystemColors.GrayText; }
                     weekDaysPanel.Controls.Add(dayBox);
@@ -1458,6 +1986,25 @@ namespace LabourBudgetCalculator
                     QueueScheduleUpdate(tabPage, resource);
                 }
             };
+        }
+
+        private void UpdateDayPanelsTheme()
+        {
+            // This method is called when dark mode is toggled
+            // We need to update all existing day panels with the new theme colors
+
+            foreach (TabPage tabPage in tabResources.TabPages)
+            {
+                CommissioningResource resource = GetResourceFromTabPage(tabPage);
+                if (resource == null) continue;
+
+                // Find the schedule panel
+                var schedulePanel = FindControlInTab<Panel>(tabPage, "panelSchedule");
+                if (schedulePanel == null) continue;
+
+                // Update all day panels in this schedule
+                UpdateAllDayPanelsInSchedule(schedulePanel, resource);
+            }
         }
 
 
