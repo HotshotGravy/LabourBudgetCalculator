@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Windows.Forms;
 using System.Xml.Serialization;
-using TimeExpenseCalculator.Models;
+using LabourBudgetCalculator.Models;
 
-namespace TimeExpenseCalculator.Helpers
+namespace LabourBudgetCalculator.Helpers
 {
     public static class DataManager
     {

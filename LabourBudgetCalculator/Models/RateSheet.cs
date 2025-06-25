@@ -2,7 +2,7 @@
 using System.Collections.Generic; // Not strictly needed for this class definition but often included
 using System.Xml.Serialization; // Required for [Serializable]
 
-namespace TimeExpenseCalculator.Models // As per your provided DataManager.cs
+namespace LabourBudgetCalculator.Models // Standardized namespace
 {
     [Serializable] // For XML serialization
     public class RateSheet

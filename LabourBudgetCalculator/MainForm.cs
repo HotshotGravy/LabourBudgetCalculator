@@ -7,9 +7,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using TimeExpenseCalculator.Models;
-using TimeExpenseCalculator.Helpers;
-using TimeExpenseCalculator.Forms;
+using LabourBudgetCalculator.Models;
+using LabourBudgetCalculator.Helpers;
 using System.IO;
 using System.Xml;
 

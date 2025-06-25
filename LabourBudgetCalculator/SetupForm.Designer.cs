@@ -1,4 +1,4 @@
-﻿namespace TimeExpenseCalculator.Forms
+﻿namespace LabourBudgetCalculator
 {
     partial class SetupForm
     {

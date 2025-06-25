@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace TimeExpenseCalculator.Models
+namespace LabourBudgetCalculator.Models
 {
     [Serializable]
     public class CalculationResult

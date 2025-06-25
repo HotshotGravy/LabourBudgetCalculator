@@ -7,10 +7,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using TimeExpenseCalculator.Models;
-using TimeExpenseCalculator.Helpers;
+using LabourBudgetCalculator.Models;
+using LabourBudgetCalculator.Helpers;
 
-namespace TimeExpenseCalculator.Forms
+namespace LabourBudgetCalculator
 {
     public partial class SetupForm : Form
     {
