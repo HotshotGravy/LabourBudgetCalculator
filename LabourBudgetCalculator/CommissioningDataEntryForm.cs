@@ -2425,7 +2425,18 @@ namespace LabourBudgetCalculator
                 var cbRateSheet = FindControlInTab<ComboBox>(tab, "comboBoxRateSheet");
                 if (cbRateSheet != null && cbRateSheet.Items.Count > 0) cbRateSheet.SelectedIndex = 0;
                 var cbStartTime = FindControlInTab<ComboBox>(tab, "comboBoxStartTime");
-                if (cbStartTime != null && cbStartTime.Items.Count > 0) cbStartTime.SelectedIndex = 0;
+                if (cbStartTime != null && cbStartTime.Items.Count > 0)
+                {
+                    // Try to select 8:00 AM if present
+                    for (int i = 0; i < cbStartTime.Items.Count; i++)
+                    {
+                        if (cbStartTime.Items[i].ToString().Contains("8:00"))
+                        {
+                            cbStartTime.SelectedIndex = i;
+                            break;
+                        }
+                    }
+                }
                 var cbTravelMethod = FindControlInTab<ComboBox>(tab, "comboBoxTravelMethod");
                 if (cbTravelMethod != null && cbTravelMethod.Items.Count > 0) cbTravelMethod.SelectedIndex = 0;
 
