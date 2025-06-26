@@ -7,7 +7,7 @@ using System.IO;
 using System.Windows.Forms;
 
 using LabourBudgetCalculator.Models;
-using LabourBudgetCalculator.Helpers;
+using LabourBudgetCalculator.Helpers; 
 
 namespace LabourBudgetCalculator
 {
@@ -425,8 +425,8 @@ namespace LabourBudgetCalculator
                 // Update button appearance to indicate it's in dark mode
                 if (btnDarkMode != null)
                 {
-                    btnDarkMode.BackColor = darkButtonBackColor;
-                    btnDarkMode.ForeColor = darkButtonForeColor;
+                btnDarkMode.BackColor = darkButtonBackColor;
+                btnDarkMode.ForeColor = darkButtonForeColor;
                 }
 
                 // Apply dark theme to all group boxes
@@ -460,8 +460,8 @@ namespace LabourBudgetCalculator
                 // Update button appearance to indicate it's in light mode
                 if (btnDarkMode != null)
                 {
-                    btnDarkMode.BackColor = SystemColors.Control;
-                    btnDarkMode.ForeColor = SystemColors.ControlText;
+                btnDarkMode.BackColor = SystemColors.Control;
+                btnDarkMode.ForeColor = SystemColors.ControlText;
                 }
 
                 // Restore light theme to all group boxes
@@ -738,8 +738,8 @@ namespace LabourBudgetCalculator
                 // Only regenerate if the resource structure has changed
                 if (pendingUpdateResource.IsDirty)
                 {
-                    pendingUpdateResource.InitializeFromSchedule();
-                    RegenerateSchedule(pendingUpdateTabPage, pendingUpdateResource);
+                pendingUpdateResource.InitializeFromSchedule();
+                RegenerateSchedule(pendingUpdateTabPage, pendingUpdateResource);
                 }
 
                 // Clear pending updates
@@ -1825,7 +1825,7 @@ namespace LabourBudgetCalculator
             // Only queue schedule update if the resource structure has actually changed
             if (resource.IsDirty)
             {
-                QueueScheduleUpdate(tabPage, resource);
+            QueueScheduleUpdate(tabPage, resource);
             }
         }
         private void BtnAddResource_Click(object sender, EventArgs e) => AddNewResource();

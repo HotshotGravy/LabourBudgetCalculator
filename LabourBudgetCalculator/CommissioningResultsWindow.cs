@@ -35,7 +35,6 @@ namespace LabourBudgetCalculator
         private List<ResourcePanel> _resourcePanels = new List<ResourcePanel>();
         private bool _isClosing = false;
         private Panel _contentHostPanel;
-        private bool _isApplyingTheme = false;
 
         private void EnableDoubleBuffering()
         {
@@ -373,7 +372,7 @@ namespace LabourBudgetCalculator
         {
             private CommissioningResource _resource;
             private CommissioningResultsWindow _parentWindow;
-            private TableLayoutPanel _gridPanel;
+            internal TableLayoutPanel _gridPanel;
             private Label _headerLabel, _totalLabel;
             private bool _isExpanded = true;
             private Button _toggleButton;
@@ -585,50 +584,96 @@ namespace LabourBudgetCalculator
                 for (int i = 0; i < _gridPanel.RowCount; i++) _gridPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
             }
 
-            private void AddHeaders(List<DateTime> displayDates) // Changed parameter
+            // Centralized color logic for cell types
+            private (Color back, Color fore) GetCellColors(string cellType, bool isDarkMode, decimal? deltaValue = null)
+            {
+                Color darkHeader = _parentWindow.darkGridHeaderBackColor;
+                Color darkCell = _parentWindow.darkGridCellBackColor;
+                Color darkText = _parentWindow.darkTextColor;
+                Color lightHeader = SystemColors.ControlLight;
+                Color lightCell = Color.White;
+                Color lightText = Color.Black;
+                Color subtotalBack = Color.Yellow;
+                Color subtotalFore = Color.Black;
+                Color plannedHeader = isDarkMode ? Color.FromArgb(60, 90, 120) : Color.FromArgb(235, 245, 255);
+                Color actualHeader = isDarkMode ? Color.FromArgb(60, 120, 80) : Color.FromArgb(235, 255, 235);
+                Color deltaHeader = isDarkMode ? Color.FromArgb(120, 120, 60) : Color.FromArgb(255, 255, 235);
+                switch (cellType)
+                {
+                    case "DayHeader": return (isDarkMode ? darkHeader : lightHeader, lightText);
+                    case "ColumnHeaderPlanned": return (plannedHeader, lightText);
+                    case "ColumnHeaderActual": return (actualHeader, lightText);
+                    case "ColumnHeaderDelta": return (deltaHeader, lightText);
+                    case "Subtotal": return (subtotalBack, subtotalFore);
+                    case "Total": return (subtotalBack, subtotalFore);
+                    case "Delta":
+                        if (deltaValue.HasValue)
+                            return (Color.Transparent, deltaValue == 0 ? Color.Black : (deltaValue > 0 ? Color.DarkRed : Color.DarkGreen));
+                        else
+                            return (Color.Transparent, isDarkMode ? darkText : lightText);
+                    case "Editable": return (isDarkMode ? darkCell : lightCell, isDarkMode ? darkText : lightText);
+                    default: return (isDarkMode ? darkCell : lightCell, isDarkMode ? darkText : lightText);
+                }
+            }
+
+            // Apply styles to all grid cells based on their logical type
+            internal void ApplyCellStyles(TableLayoutPanel grid)
+            {
+                foreach (Control ctrl in grid.Controls)
+                {
+                    if (ctrl.Tag is string cellType)
+                    {
+                        decimal? deltaVal = null;
+                        if (cellType == "Delta" && ctrl is Label lbl)
+                        {
+                            if (decimal.TryParse(lbl.Text.Replace("$", "").Replace(",", ""), out decimal d))
+                                deltaVal = d;
+                        }
+                        var (back, fore) = GetCellColors(cellType, _parentWindow._isDarkMode, deltaVal);
+                        ctrl.BackColor = back;
+                        ctrl.ForeColor = fore;
+                    }
+                    else if (ctrl is EditableCell ec)
+                    {
+                        ec.ApplyTheme(_parentWindow._isDarkMode, GetCellColors("Editable", _parentWindow._isDarkMode));
+                    }
+                }
+            }
+
+            // Update AddHeaders to assign logical types
+            private void AddHeaders(List<DateTime> displayDates)
             {
                 if (_gridPanel.ColumnCount == 0 || !displayDates.Any()) return;
-                AddControlToGrid(CreateLabel("", true), 0, 0); // Top-left empty cell
+                var empty = CreateLabel("", true); empty.Tag = "DayHeader";
+                AddControlToGrid(empty, 0, 0); // Top-left empty cell
                 int currentGridColumn = 1;
                 foreach (DateTime displayDate in displayDates)
                 {
                     if (currentGridColumn + 2 >= _gridPanel.ColumnCount) break; // Ensure space for 3 cells per date
-                    var dateHeaderLabel = CreateLabel(displayDate.ToString("ddd MMM dd"), true);
+                    var dateHeaderLabel = CreateLabel(displayDate.ToString("ddd MMM dd"), true); dateHeaderLabel.Tag = "DayHeader";
                     dateHeaderLabel.BackColor = Color.FromArgb(230, 230, 250);
                     dateHeaderLabel.BorderStyle = BorderStyle.FixedSingle;
+                    dateHeaderLabel.TextAlign = ContentAlignment.MiddleCenter;
                     AddControlToGrid(dateHeaderLabel, currentGridColumn, 0);
                     _gridPanel.SetColumnSpan(dateHeaderLabel, 3);
 
-                    AddControlToGrid(CreateLabel("Planned", true, Color.FromArgb(235, 245, 255)), currentGridColumn, 1);
-                    AddControlToGrid(CreateLabel("Actual", true, Color.FromArgb(235, 255, 235)), currentGridColumn + 1, 1);
-                    AddControlToGrid(CreateLabel("Delta", true, Color.FromArgb(255, 255, 235)), currentGridColumn + 2, 1);
+                    var planned = CreateLabel("Planned", true); planned.Tag = "ColumnHeaderPlanned";
+                    planned.TextAlign = ContentAlignment.MiddleCenter;
+                    var actual = CreateLabel("Actual", true); actual.Tag = "ColumnHeaderActual";
+                    actual.TextAlign = ContentAlignment.MiddleCenter;
+                    var delta = CreateLabel("Delta", true); delta.Tag = "ColumnHeaderDelta";
+                    delta.TextAlign = ContentAlignment.MiddleCenter;
+                    AddControlToGrid(planned, currentGridColumn, 1);
+                    AddControlToGrid(actual, currentGridColumn + 1, 1);
+                    AddControlToGrid(delta, currentGridColumn + 2, 1);
                     currentGridColumn += 3;
                 }
             }
 
-            private void AddControlToGrid(Control control, int column, int row) { if (column < _gridPanel.ColumnCount && row < _gridPanel.RowCount) _gridPanel.Controls.Add(control, column, row); }
-            private Label CreateLabel(string text, bool isHeader, Color? backColor = null, Color? foreColor = null)
-            {
-                var lbl = new Label
-                {
-                    Text = text,
-                    TextAlign = isHeader ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleRight,
-                    Dock = DockStyle.Fill,
-                    Font = isHeader ? new Font(this.Font, FontStyle.Bold) : this.Font
-                };
-                if (backColor.HasValue) lbl.BackColor = backColor.Value;
-                else if (isHeader) lbl.BackColor = SystemColors.ControlLight;
-                if (foreColor.HasValue) lbl.ForeColor = foreColor.Value;
-                return lbl;
-            }
-            private string FormatValue(decimal value, string dataType) { return IsHoursType(dataType) ? value.ToString("F1") : value.ToString("C2"); }
-            internal bool IsHoursType(string dataType) { return dataType != null && (dataType.StartsWith("Service") || dataType.StartsWith("Travel")); }
-            private void SetDeltaLabelColor(Label label, decimal delta) { label.ForeColor = delta == 0 ? Color.Black : (delta > 0 ? Color.DarkRed : Color.DarkGreen); } // Assuming delta > 0 is over budget/actual > planned
-
-            // Corrected AddDataRow (already provided in previous response, ensure it's used)
+            // Update AddDataRow, AddSubtotalRow, AddTotalsRow to assign logical types
             private void AddDataRow(int gridRow, string rowLabelText, List<DateTime> displayDates, string dataType)
             {
-                var headerLabel = CreateLabel(rowLabelText, false);
+                var headerLabel = CreateLabel(rowLabelText, false); headerLabel.Tag = "RowHeader";
                 headerLabel.TextAlign = ContentAlignment.MiddleLeft;
                 headerLabel.Padding = new Padding(5, 0, 0, 0);
                 AddControlToGrid(headerLabel, 0, gridRow);
@@ -652,34 +697,34 @@ namespace LabourBudgetCalculator
                         decimal actualValue = GetActualValue(dayData, dataType);
                         decimal deltaValue = actualValue - plannedValue;
 
-                        var plannedLabel = CreateLabel(FormatValue(plannedValue, dataType), false);
+                        var plannedLabel = CreateLabel(FormatValue(plannedValue, dataType), false); plannedLabel.Tag = "Normal";
                         if (IsHoursType(dataType) && plannedValue != 0) plannedLabel.Font = new Font(this.Font, FontStyle.Bold);
                         AddControlToGrid(plannedLabel, currentGridColumn, gridRow);
                         _plannedLabels[$"P_{dataType}_{dayKey}"] = plannedLabel;
 
                         AddEditableCell(gridRow, currentGridColumn + 1, actualValue, dataType, dayKey, dayData);
 
-                        var deltaLabel = CreateLabel(FormatValue(deltaValue, dataType), false);
+                        var deltaLabel = CreateLabel(FormatValue(deltaValue, dataType), false); deltaLabel.Tag = "Delta";
                         SetDeltaLabelColor(deltaLabel, deltaValue);
                         AddControlToGrid(deltaLabel, currentGridColumn + 2, gridRow);
                         _deltaLabels[$"D_{dataType}_{dayKey}"] = deltaLabel;
                     }
                     else
                     {
-                        AddControlToGrid(CreateLabel(string.Empty, false), currentGridColumn, gridRow);
-                        AddControlToGrid(CreateLabel(string.Empty, false), currentGridColumn + 1, gridRow);
-                        AddControlToGrid(CreateLabel(string.Empty, false), currentGridColumn + 2, gridRow);
+                        var empty1 = CreateLabel(string.Empty, false); empty1.Tag = "Normal";
+                        var empty2 = CreateLabel(string.Empty, false); empty2.Tag = "Normal";
+                        var empty3 = CreateLabel(string.Empty, false); empty3.Tag = "Normal";
+                        AddControlToGrid(empty1, currentGridColumn, gridRow);
+                        AddControlToGrid(empty2, currentGridColumn + 1, gridRow);
+                        AddControlToGrid(empty3, currentGridColumn + 2, gridRow);
                     }
                     currentGridColumn += 3;
                 }
             }
-
-            // Corrected AddSubtotalRow
             private void AddSubtotalRow(int gridRow, string labelText, List<DateTime> displayDates, bool isChargesSubtotal)
             {
-                var rowHeaderLabel = CreateLabel(labelText, true);
+                var rowHeaderLabel = CreateLabel(labelText, true); rowHeaderLabel.Tag = "RowHeader";
                 rowHeaderLabel.TextAlign = ContentAlignment.MiddleLeft;
-                rowHeaderLabel.BackColor = Color.LightYellow;
                 rowHeaderLabel.Padding = new Padding(5, 0, 0, 0);
                 AddControlToGrid(rowHeaderLabel, 0, gridRow);
 
@@ -706,15 +751,15 @@ namespace LabourBudgetCalculator
                     string cleanLabelText = labelText.Replace(" ", "").Replace("-", "");
                     string baseKey = $"SUB_{cleanLabelText}_{dayKey}"; // Use dayKey if found for uniqueness
 
-                    var pL = CreateLabel(plannedSubtotal.ToString("C2"), true); pL.BackColor = Color.LightYellow;
+                    var pL = CreateLabel(plannedSubtotal.ToString("C2"), true); pL.Tag = "Subtotal";
                     AddControlToGrid(pL, currentGridColumn, gridRow);
                     if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_P"] = pL;
 
-                    var aL = CreateLabel(actualSubtotal.ToString("C2"), true); aL.BackColor = Color.LightYellow;
+                    var aL = CreateLabel(actualSubtotal.ToString("C2"), true); aL.Tag = "Subtotal";
                     AddControlToGrid(aL, currentGridColumn + 1, gridRow);
                     if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_A"] = aL;
 
-                    var dL = CreateLabel(deltaSubtotal.ToString("C2"), true); dL.BackColor = Color.LightYellow;
+                    var dL = CreateLabel(deltaSubtotal.ToString("C2"), true); dL.Tag = "Subtotal";
                     SetDeltaLabelColor(dL, deltaSubtotal);
                     AddControlToGrid(dL, currentGridColumn + 2, gridRow);
                     if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_D"] = dL;
@@ -722,23 +767,10 @@ namespace LabourBudgetCalculator
                     currentGridColumn += 3;
                 }
             }
-
-            private void AddEditableCell(int gridRow, int gridCol, decimal value, string dataType, int dayKey, ResourceDayData dayData, Color? backColor = null)
-            {
-                var eC = new EditableCell(value, dataType, dayKey, dayData, _resource, this) { Dock = DockStyle.Fill };
-                if (backColor.HasValue) eC.BackColor = backColor.Value;
-                _editableCells[$"A_{dataType}_{dayKey}"] = eC; // Store reference to the EditableCell
-                AddControlToGrid(eC, gridCol, gridRow); // Add to grid
-            }
-
-            // Corrected AddTotalsRow (already provided in previous response, ensure it's used)
             private void AddTotalsRow(int gridRow, string labelText, List<DateTime> displayDates)
             {
-                Color subtotalBack = Color.Yellow;
-                Color subtotalFore = _parentWindow._isDarkMode ? Color.Black : Color.Empty;
-                var rowHeaderLabel = CreateLabel(labelText, true, subtotalBack, subtotalFore);
+                var rowHeaderLabel = CreateLabel(labelText, true); rowHeaderLabel.Tag = "RowHeader";
                 rowHeaderLabel.TextAlign = ContentAlignment.MiddleLeft;
-                rowHeaderLabel.BackColor = subtotalBack;
                 rowHeaderLabel.Padding = new Padding(5, 0, 0, 0);
                 AddControlToGrid(rowHeaderLabel, 0, gridRow);
 
@@ -764,15 +796,15 @@ namespace LabourBudgetCalculator
 
                     string baseKey = $"TOTAL_Day_{dayKey}"; // Use dayKey for uniqueness
 
-                    var pL = CreateLabel(plannedTotal.ToString("C2"), true, subtotalBack, subtotalFore);
+                    var pL = CreateLabel(plannedTotal.ToString("C2"), true); pL.Tag = "Total";
                     AddControlToGrid(pL, currentGridColumn, gridRow);
                     if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_P"] = pL;
 
-                    var aL = CreateLabel(actualTotal.ToString("C2"), true, subtotalBack, subtotalFore);
+                    var aL = CreateLabel(actualTotal.ToString("C2"), true); aL.Tag = "Total";
                     AddControlToGrid(aL, currentGridColumn + 1, gridRow);
                     if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_A"] = aL;
 
-                    var dL = CreateLabel(deltaTotal.ToString("C2"), true, subtotalBack, subtotalFore);
+                    var dL = CreateLabel(deltaTotal.ToString("C2"), true); dL.Tag = "Total";
                     SetDeltaLabelColor(dL, deltaTotal);
                     AddControlToGrid(dL, currentGridColumn + 2, gridRow);
                     if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_D"] = dL;
@@ -780,46 +812,12 @@ namespace LabourBudgetCalculator
                     currentGridColumn += 3;
                 }
             }
-
-            private void AddDataRowsAndTotals(List<DateTime> displayDates)
+            private void AddEditableCell(int gridRow, int gridCol, decimal value, string dataType, int dayKey, ResourceDayData dayData, Color? backColor = null)
             {
-                int r = 2; // Start grid row index for data
-                           // Define your data types/rows
-                var dataRowDefinitions = new[] {
-        new { Label = "Service (Reg)", DataType = "ServiceReg" },
-        new { Label = "Service (OT)", DataType = "ServiceOT" },
-        new { Label = "Service (Premium)", DataType = "ServicePrem" },
-        new { Label = "Travel (Reg)", DataType = "TravelReg" },
-        new { Label = "Travel (OT)", DataType = "TravelOT" },
-        new { Label = "Travel (Premium)", DataType = "TravelPrem" }
-    };
-                foreach (var def in dataRowDefinitions) { AddDataRow(r++, def.Label, displayDates, def.DataType); }
-                AddSubtotalRow(r++, "Subtotals - Charges", displayDates, true);
-
-                var expenseRowDefinitions = new[] {
-        new { Label = "Mileage", DataType = "Mileage" },
-        new { Label = "Per Diem", DataType = "PerDiem" },
-        new { Label = "Flight", DataType = "Flight" },
-        new { Label = "Car Rental", DataType = "CarRental" },
-        new { Label = "Hotel", DataType = "Hotel" }
-    };
-                foreach (var def in expenseRowDefinitions) { AddDataRow(r++, def.Label, displayDates, def.DataType); }
-                AddSubtotalRow(r++, "Subtotals - Expenses", displayDates, false);
-                AddTotalsRow(r++, "Totals", displayDates); // This is the Resource Daily Totals Row
+                var eC = new EditableCell(value, dataType, dayKey, dayData, _resource, this) { Dock = DockStyle.Fill, Tag = "Editable" };
+                _editableCells[$"A_{dataType}_{dayKey}"] = eC; // Store reference to the EditableCell
+                AddControlToGrid(eC, gridCol, gridRow); // Add to grid
             }
-
-            // Modify AddDataRow, AddSubtotalRow, AddTotalsRow signatures and logic
-            // Example for AddDataRow:
-
-
-            // Similar modifications for AddSubtotalRow and AddTotalsRow:
-            // Change List<KeyValuePair<int, ResourceDayData>> oD to List<DateTime> displayDates
-            // Loop through displayDates, find matching ResourceDayData for _resource.
-            // If ResourceDayData found, calculate and add labels.
-            // If not found, add empty labels for that day's subtotal/total columns.
-
-            // Example for AddTotalsRow (showing the Resource Daily Totals):
-
 
             public void RefreshGridDisplay()
             {
@@ -832,47 +830,18 @@ namespace LabourBudgetCalculator
 
                 // Condition for full rebuild: if column count mismatches, or if essential dictionaries are empty but there are dates to show.
                 if (_gridPanel.ColumnCount != expectedColumnCount ||
-                    (!_editableCells.Any() && _overallDisplayDates.Any()) ||
-                    (!_plannedLabels.Any() && _overallDisplayDates.Any()))
+                    (!_editableCells.Any() && _overallDisplayDates.Count > 0) ||
+                    (!_plannedLabels.Any() && _overallDisplayDates.Count > 0))
                 {
-                    // Full rebuild if structure is wrong or controls not initialized
-                    PopulateData(); // This will use _overallDisplayDates
-                    _gridPanel.ResumeLayout(true); // PopulateData now handles its own Suspend/Resume
-                    return;
+                    PopulateData();
                 }
-
-                // In-place update
-                string[] dataTypes = { "ServiceReg", "ServiceOT", "ServicePrem", "TravelReg", "TravelOT", "TravelPrem", "Mileage", "PerDiem", "Flight", "CarRental", "Hotel" };
-
-                foreach (var displayDate in _overallDisplayDates)
+                else
                 {
-                    ResourceDayData dD = _resource.DailyData.Values.FirstOrDefault(rd => rd != null && rd.Date.Date == displayDate.Date);
-                    int dK = -1;
-                    if (dD != null)
-                    {
-                        var kvp = _resource.DailyData.FirstOrDefault(entry => entry.Value == dD);
-                        dK = kvp.Value != null ? kvp.Key : -1;
-                    }
-
-                    if (dD != null && dK != -1) // Only update if there's data and a key for this resource on this date
-                    {
-                        foreach (string dT in dataTypes)
-                        {
-                            decimal pV = GetPlannedValue(dD, dT);
-                            decimal aV = GetActualValue(dD, dT);
-                            decimal dVal = aV - pV;
-
-                            if (_plannedLabels.TryGetValue($"P_{dT}_{dK}", out Label pL)) { pL.Text = FormatValue(pV, dT); pL.Font = (IsHoursType(dT) && pV != 0) ? new Font(this.Font, FontStyle.Bold) : this.Font; }
-                            if (_editableCells.TryGetValue($"A_{dT}_{dK}", out EditableCell aC)) { aC.UpdateValueFromDayData(); } // UpdateValueFromDayData should use the dD and dT on the cell
-                            if (_deltaLabels.TryGetValue($"D_{dT}_{dK}", out Label dL)) { dL.Text = FormatValue(dVal, dT); SetDeltaLabelColor(dL, dVal); }
-                        }
-                    }
+                    UpdateSubtotalOrTotalRowLabels_InPlace(_overallDisplayDates, "Subtotals - Charges", true);
+                    UpdateSubtotalOrTotalRowLabels_InPlace(_overallDisplayDates, "Subtotals - Expenses", false);
+                    UpdateSubtotalOrTotalRowLabels_InPlace(_overallDisplayDates, "Totals", null); // For the main "Totals" row
                 }
-                // Update subtotal and total rows using _overallDisplayDates
-                UpdateSubtotalOrTotalRowLabels_InPlace(_overallDisplayDates, "Subtotals - Charges", true);
-                UpdateSubtotalOrTotalRowLabels_InPlace(_overallDisplayDates, "Subtotals - Expenses", false);
-                UpdateSubtotalOrTotalRowLabels_InPlace(_overallDisplayDates, "Totals", null); // For the main "Totals" row
-
+                ApplyCellStyles(_gridPanel); // Always reapply cell styles after grid refresh
                 _gridPanel.ResumeLayout(true);
             }
 
@@ -915,8 +884,6 @@ namespace LabourBudgetCalculator
                 }
             }
 
-            private void UpdateSubtotalOrTotalRowLabels_InPlace(List<KeyValuePair<int, ResourceDayData>> oD, string bLTFT, bool? iC) { foreach (var dE in oD) { var dD = dE.Value; int dK = dE.Key; decimal pV, aV, dV; if (iC.HasValue) { pV = CalculateSubtotal(dD, iC.Value, true); aV = CalculateSubtotal(dD, iC.Value, false); } else { pV = CalculateDayTotal(dD, true); aV = CalculateDayTotal(dD, false); } dV = aV - pV; string cLT = bLTFT.Replace(" ", "").Replace("-", ""); string kP = iC.HasValue ? $"SUB_{cLT}" : $"TOTAL_Day"; if (_subtotalAndTotalLabels.TryGetValue($"{kP}_{dK}_P", out Label pL)) pL.Text = pV.ToString("C2"); if (_subtotalAndTotalLabels.TryGetValue($"{kP}_{dK}_A", out Label aL)) aL.Text = aV.ToString("C2"); if (_subtotalAndTotalLabels.TryGetValue($"{kP}_{dK}_D", out Label dL)) { dL.Text = dV.ToString("C2"); SetDeltaLabelColor(dL, dV); } } }
-
             internal void NotifyValueChanged() { _resource.CalculateResourceTotals(); RefreshGridDisplay(); UpdateTotalLabel(); _parentWindow.NotifyResourceDataChanged(); }
             internal void AppendCSVData(StringBuilder sb) { if (_resource.DailyData == null || !_resource.DailyData.Any()) return; var oD = _resource.DailyData.Where(kvp => kvp.Value.Date != DateTime.MinValue).OrderBy(kvp => kvp.Value.Date).ToList(); Helpers.ExpenseCalculator.CalculateResourceExpenses(_resource); foreach (var dE in oD) { var dD = dE.Value; decimal lC = (dD.ActualRegularLabourHours * GetRegularLabourRate()) + (dD.ActualOvertimeLabourHours * GetOvertimeLabourRate()) + (dD.ActualPremiumLabourHours * GetPremiumLabourRate()); decimal tC = (dD.ActualRegularTravelHours * GetRegularTravelRate()) + (dD.ActualOvertimeTravelHours * GetOvertimeTravelRate()) + (dD.ActualPremiumTravelHours * GetPremiumTravelRate()); decimal dayTotal = lC + tC + dD.ActualMileageCost + dD.ActualPerDiemCost + dD.ActualFlightCost + dD.ActualRentalCarCost + dD.ActualHotelCost; sb.AppendLine($"\"{EscapeCSV(_resource.TechnicianName)}\",{dD.Date:MM/dd/yyyy},{dD.Date:dddd},{dD.ActualRegularLabourHours},{dD.ActualOvertimeLabourHours},{dD.ActualPremiumLabourHours},{dD.ActualRegularTravelHours},{dD.ActualOvertimeTravelHours},{dD.ActualPremiumTravelHours},{dD.ActualMileageCost},{dD.ActualPerDiemCost},{dD.ActualFlightCost},{dD.ActualRentalCarCost},{dD.ActualHotelCost},{dayTotal}"); } }
             private string EscapeCSV(string v) { if (v == null) return ""; if (v.Contains(",") || v.Contains("\"") || v.Contains("\n")) return $"\"{v.Replace("\"", "\"\"")}\""; return v; }
@@ -945,57 +912,68 @@ namespace LabourBudgetCalculator
                     }
                 }
             }
-            public void ApplySpecialGridFormatting()
+
+            // Utility: Add a control to the grid at (col, row)
+            private void AddControlToGrid(Control ctrl, int col, int row)
             {
-                // 1. Header labels (day/date, day type)
-                foreach (Control c in _gridPanel.Controls)
+                _gridPanel.Controls.Add(ctrl, col, row);
+            }
+
+            // Utility: Create a label with optional bold font
+            private Label CreateLabel(string text, bool bold)
+            {
+                return new Label
                 {
-                    if (c is Label lbl)
-                    {
-                        // Header row: row 0 or 1
-                        if (_gridPanel.GetRow(lbl) == 0 || _gridPanel.GetRow(lbl) == 1)
-                        {
-                            lbl.Font = new Font(lbl.Font, FontStyle.Bold);
-                            lbl.ForeColor = Color.Black;
-                            lbl.BackColor = Color.LightGray;
-                        }
-                    }
-                }
-                // 2. Subtotal/total rows (yellow background, black text)
-                foreach (var kvp in _subtotalAndTotalLabels)
-                {
-                    var label = kvp.Value;
-                    label.BackColor = Color.Yellow;
-                    label.ForeColor = Color.Black;
-                    label.Font = new Font(label.Font, FontStyle.Bold);
-                }
-                // 3. Delta columns (red/green/black text)
-                foreach (var kvp in _deltaLabels)
-                {
-                    var label = kvp.Value;
-                    if (decimal.TryParse(label.Text.Replace("$", "").Replace(",", ""), out decimal delta))
-                    {
-                        if (delta == 0) label.ForeColor = Color.Black;
-                        else if (delta > 0) label.ForeColor = Color.DarkRed;
-                        else label.ForeColor = Color.DarkGreen;
-                    }
-                    label.Font = new Font(label.Font, FontStyle.Bold);
-                }
-                // 4. Editable cells (background/foreground for theme)
-                foreach (var kvp in _editableCells)
-                {
-                    var cell = kvp.Value;
-                    if (_parentWindow._isDarkMode)
-                    {
-                        cell.BackColor = Color.FromArgb(55, 65, 80); // darkGridCellBackColor
-                        cell.ForeColor = Color.White;
-                    }
-                    else
-                    {
-                        cell.BackColor = Color.White;
-                        cell.ForeColor = Color.Black;
-                    }
-                }
+                    Text = text,
+                    TextAlign = ContentAlignment.MiddleRight,
+                    Dock = DockStyle.Fill,
+                    Font = bold ? new Font(this.Font, FontStyle.Bold) : this.Font,
+                    AutoSize = false,
+                    Margin = new Padding(0),
+                    Padding = new Padding(0)
+                };
+            }
+
+            // Utility: Format value for display
+            private string FormatValue(decimal value, string dataType)
+            {
+                return IsHoursType(dataType) ? value.ToString("F1") : value.ToString("C2");
+            }
+
+            // Utility: Determine if a data type is hours
+            internal bool IsHoursType(string dataType)
+            {
+                return dataType == "ServiceReg" || dataType == "ServiceOT" || dataType == "ServicePrem" ||
+                       dataType == "TravelReg" || dataType == "TravelOT" || dataType == "TravelPrem";
+            }
+
+            // Utility: Set delta label color
+            private void SetDeltaLabelColor(Label label, decimal delta)
+            {
+                if (delta == 0) label.ForeColor = Color.Black;
+                else if (delta > 0) label.ForeColor = Color.DarkRed;
+                else label.ForeColor = Color.DarkGreen;
+            }
+
+            // AddDataRowsAndTotals: Add all data rows and totals to the grid
+            private void AddDataRowsAndTotals(List<DateTime> displayDates)
+            {
+                int row = 2;
+                // Example row labels and data types (customize as needed)
+                AddDataRow(row++, "Regular Labour", displayDates, "ServiceReg");
+                AddDataRow(row++, "Overtime Labour", displayDates, "ServiceOT");
+                AddDataRow(row++, "Premium Labour", displayDates, "ServicePrem");
+                AddSubtotalRow(row++, "Subtotals - Charges", displayDates, true);
+                AddDataRow(row++, "Regular Travel", displayDates, "TravelReg");
+                AddDataRow(row++, "Overtime Travel", displayDates, "TravelOT");
+                AddDataRow(row++, "Premium Travel", displayDates, "TravelPrem");
+                AddSubtotalRow(row++, "Subtotals - Expenses", displayDates, false);
+                AddDataRow(row++, "Mileage", displayDates, "Mileage");
+                AddDataRow(row++, "Per Diem", displayDates, "PerDiem");
+                AddDataRow(row++, "Flight", displayDates, "Flight");
+                AddDataRow(row++, "Car Rental", displayDates, "CarRental");
+                AddDataRow(row++, "Hotel", displayDates, "Hotel");
+                AddTotalsRow(row++, "Totals", displayDates);
             }
         }
 
@@ -1005,6 +983,13 @@ namespace LabourBudgetCalculator
             public EditableCell(decimal v, string dT, int dK, ResourceDayData dD, CommissioningResource res, ResourcePanel pP) { _value = v; _dataType = dT; _dayKey = dK; _dayData = dD; _resource = res; _parentPanel = pP; InitializeControls(); }
             public void UpdateValueFromDayData() { if (_parentPanel != null && _dayData != null) _value = _parentPanel.GetActualValue(_dayData, _dataType); if (_parentPanel.IsHoursType(_dataType)) { _label.Text = _value.ToString("F1"); _label.Font = new Font(_label.Font, _value != 0 ? FontStyle.Bold : FontStyle.Regular); } else { _label.Text = _value.ToString("C2"); } if (_textBox.Visible) _textBox.Text = _parentPanel.IsHoursType(_dataType) ? _value.ToString("F1") : _value.ToString("F2"); }
             public override Color BackColor { get => base.BackColor; set { base.BackColor = value; if (_label != null) _label.BackColor = value; } }
+            public void ApplyTheme(bool isDarkMode, (Color back, Color fore) colors)
+            {
+                _label.BackColor = colors.back;
+                _label.ForeColor = colors.fore;
+                _textBox.BackColor = colors.back;
+                _textBox.ForeColor = colors.fore;
+            }
             private void InitializeControls() { _label = new Label { TextAlign = ContentAlignment.MiddleRight, Dock = DockStyle.Fill, Cursor = Cursors.Hand }; _textBox = new TextBox { TextAlign = HorizontalAlignment.Right, Dock = DockStyle.Fill, Visible = false }; UpdateValueFromDayData(); _label.MouseClick += Label_MouseClick; _textBox.KeyDown += TextBox_KeyDown; _textBox.Leave += TextBox_Leave; _textBox.KeyPress += TextBox_KeyPress; this.Controls.Add(_label); this.Controls.Add(_textBox); }
             private void Label_MouseClick(object s, MouseEventArgs e) { if (e.Button == MouseButtons.Left) StartEdit(); }
             private void StartEdit() { _isEditing = true; _label.Visible = false; _textBox.Visible = true; _textBox.Text = _parentPanel.IsHoursType(_dataType) ? _value.ToString("F1") : _value.ToString("F2"); _textBox.SelectAll(); _textBox.Focus(); }
@@ -1024,109 +1009,77 @@ namespace LabourBudgetCalculator
         }
         private void ApplyTheme()
         {
-            if (_isApplyingTheme) return;
-            _isApplyingTheme = true;
-            this.SuspendLayout();
-            if (_mainPanel != null) _mainPanel.SuspendLayout();
-            try
+            if (_isDarkMode)
             {
-                if (_isDarkMode)
+                this.BackColor = darkBackColor;
+                this.ForeColor = darkTextColor;
+                if (_darkModeButton != null)
                 {
-                    this.BackColor = darkBackColor;
-                    this.ForeColor = darkTextColor;
-                    if (_darkModeButton != null)
-                    {
-                        _darkModeButton.BackColor = darkButtonBackColor;
-                        _darkModeButton.ForeColor = darkButtonForeColor;
-                    }
-                    if (_exportButton != null)
-                    {
-                        _exportButton.BackColor = darkButtonBackColor;
-                        _exportButton.ForeColor = darkButtonForeColor;
-                    }
-                    if (_closeButton != null)
-                    {
-                        _closeButton.BackColor = darkButtonBackColor;
-                        _closeButton.ForeColor = darkButtonForeColor;
-                    }
-                    ApplyDarkThemeToControl(this);
+                    _darkModeButton.BackColor = darkButtonBackColor;
+                    _darkModeButton.ForeColor = darkButtonForeColor;
                 }
-                else
+                if (_exportButton != null)
                 {
-                    this.BackColor = SystemColors.Control;
-                    this.ForeColor = SystemColors.ControlText;
-                    if (_darkModeButton != null)
-                    {
-                        _darkModeButton.BackColor = SystemColors.Control;
-                        _darkModeButton.ForeColor = SystemColors.ControlText;
-                    }
-                    if (_exportButton != null)
-                    {
-                        _exportButton.BackColor = SystemColors.Control;
-                        _exportButton.ForeColor = SystemColors.ControlText;
-                    }
-                    if (_closeButton != null)
-                    {
-                        _closeButton.BackColor = SystemColors.Control;
-                        _closeButton.ForeColor = SystemColors.ControlText;
-                    }
-                    ApplyLightThemeToControl(this);
+                    _exportButton.BackColor = darkButtonBackColor;
+                    _exportButton.ForeColor = darkButtonForeColor;
                 }
-                // Reapply special formatting, refresh grid, and apply special formatting again for all resource panels after theme is applied
-                foreach (var rp in _resourcePanels) {
-                    rp.RefreshGridDisplay();
-                    rp.ApplySpecialGridFormatting();
+                if (_closeButton != null)
+                {
+                    _closeButton.BackColor = darkButtonBackColor;
+                    _closeButton.ForeColor = darkButtonForeColor;
                 }
+                ApplyDarkThemeToControl(this);
             }
-            finally
+            else
             {
-                if (_mainPanel != null) _mainPanel.ResumeLayout();
-                this.ResumeLayout();
-                _isApplyingTheme = false;
+                this.BackColor = SystemColors.Control;
+                this.ForeColor = SystemColors.ControlText;
+                if (_darkModeButton != null)
+                {
+                    _darkModeButton.BackColor = SystemColors.Control;
+                    _darkModeButton.ForeColor = SystemColors.ControlText;
+                }
+                if (_exportButton != null)
+                {
+                    _exportButton.BackColor = SystemColors.Control;
+                    _exportButton.ForeColor = SystemColors.ControlText;
+                }
+                if (_closeButton != null)
+                {
+                    _closeButton.BackColor = SystemColors.Control;
+                    _closeButton.ForeColor = SystemColors.ControlText;
+                }
+                ApplyLightThemeToControl(this);
+            }
+            // Reapply special formatting and refresh grid for all resource panels after theme is applied
+            foreach (var rp in _resourcePanels) {
+                rp.ApplyCellStyles(rp._gridPanel); // Always reapply cell styles after theme
             }
         }
         private void ApplyDarkThemeToControl(Control control)
         {
+            // Only apply to panels, buttons, and summary labels, not grid cells
             if (control is Panel || control is TableLayoutPanel)
             {
                 control.BackColor = darkPanelBackColor;
                 control.ForeColor = darkTextColor;
-            }
-            else if (control is Label lbl)
-            {
-                // If the label has a yellow or light background (subtotal/total), use black text for contrast
-                if (lbl.BackColor.ToArgb() == Color.Yellow.ToArgb() || lbl.BackColor.ToArgb() == Color.LightYellow.ToArgb())
-                {
-                    lbl.ForeColor = Color.Black;
-                }
-                // If the label is a delta label (red/green), don't overwrite its color
-                else if (lbl.ForeColor == Color.DarkRed || lbl.ForeColor == Color.DarkGreen)
-                {
-                    // Do not overwrite
-                }
-                // If the label is a header (row 0 or 1), set to black
-                else if (lbl.Parent is TableLayoutPanel tlp && (tlp.GetRow(lbl) == 0 || tlp.GetRow(lbl) == 1))
-                {
-                    lbl.ForeColor = Color.Black;
-                    lbl.BackColor = Color.LightGray;
-                }
-                else
-                {
-                    lbl.BackColor = Color.Transparent;
-                    lbl.ForeColor = darkTextColor;
-                }
             }
             else if (control is Button)
             {
                 control.BackColor = darkButtonBackColor;
                 control.ForeColor = darkButtonForeColor;
             }
-            // For EditableCell, set background/foreground
-            else if (control is EditableCell ec)
+            else if (control is Label lbl)
             {
-                ec.BackColor = Color.FromArgb(55, 65, 80);
-                ec.ForeColor = Color.White;
+                // Only apply to summary panel labels (not grid cells)
+                if (lbl.Parent == _summaryPanel)
+                {
+                    lbl.BackColor = darkPanelBackColor;
+                    lbl.ForeColor = darkTextColor;
+                }
+                // else: skip grid cell labels
             }
+            // Skip EditableCell and grid cell labels
             foreach (Control child in control.Controls)
             {
                 ApplyDarkThemeToControl(child);
@@ -1134,14 +1087,28 @@ namespace LabourBudgetCalculator
         }
         private void ApplyLightThemeToControl(Control control)
         {
-            control.BackColor = SystemColors.Control;
-            control.ForeColor = SystemColors.ControlText;
-            // For EditableCell, set background/foreground
-            if (control is EditableCell ec)
+            // Only apply to panels, buttons, and summary labels, not grid cells
+            if (control is Panel || control is TableLayoutPanel)
             {
-                ec.BackColor = Color.White;
-                ec.ForeColor = Color.Black;
+                control.BackColor = SystemColors.Control;
+                control.ForeColor = SystemColors.ControlText;
             }
+            else if (control is Button)
+            {
+                control.BackColor = SystemColors.Control;
+                control.ForeColor = SystemColors.ControlText;
+            }
+            else if (control is Label lbl)
+            {
+                // Only apply to summary panel labels (not grid cells)
+                if (lbl.Parent == _summaryPanel)
+                {
+                    lbl.BackColor = SystemColors.Control;
+                    lbl.ForeColor = SystemColors.ControlText;
+                }
+                // else: skip grid cell labels
+            }
+            // Skip EditableCell and grid cell labels
             foreach (Control child in control.Controls)
             {
                 ApplyLightThemeToControl(child);
