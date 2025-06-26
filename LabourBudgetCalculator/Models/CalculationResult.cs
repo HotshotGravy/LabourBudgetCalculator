@@ -23,7 +23,7 @@ namespace LabourBudgetCalculator.Models
     {
         public int DayNumber { get; set; }
         public DayOfWeek DayOfWeek { get; set; }
-        public DayType Type { get; set; }
+        public CalculationDayType Type { get; set; }
         public int RegularLabourHours { get; set; }
         public int OvertimeLabourHours { get; set; }
         public int PremiumLabourHours { get; set; }
@@ -42,7 +42,7 @@ namespace LabourBudgetCalculator.Models
         public decimal TotalDayCost { get; set; }
     }
 
-    public enum DayType
+    public enum CalculationDayType
     {
         WorkDay,
         TravelTo,

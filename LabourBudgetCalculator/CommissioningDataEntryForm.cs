@@ -5,9 +5,9 @@ using System.Linq;
 using System.Xml;
 using System.IO;
 using System.Windows.Forms;
-using LabourBudgetCalculator.Models;
-using LabourBudgetCalculator.Helpers; 
 
+using LabourBudgetCalculator.Models;
+using LabourBudgetCalculator.Helpers;
 
 namespace LabourBudgetCalculator
 {
@@ -55,6 +55,9 @@ namespace LabourBudgetCalculator
         private Color lightWorkDay = Color.LightBlue;
         private Color lightHoldoverDay = Color.LightGreen;
 
+        private Button btnBackToProjects;
+        private Button btnReset;
+
         public CommissioningDataEntryForm(CommissioningProject project)
         {
             InitializeComponent();
@@ -70,14 +73,6 @@ namespace LabourBudgetCalculator
             LoadDarkModePreference();
             SetupAutoSave();
             SetupScheduleUpdateTimer();
-        }
-        // Add this enum to define day types
-        private enum DayType
-        {
-            Work,
-            Travel,
-            Holdover,
-            Nil
         }
 
         private void EnableDoubleBuffering()
@@ -136,14 +131,17 @@ namespace LabourBudgetCalculator
 
         private DayType DetermineDayType(ResourceDayData dayData, CommissioningResource resource)
         {
+            // Check for manual override first
+            if (dayData.ManualDayType.HasValue)
+            {
+                return dayData.ManualDayType.Value;
+            }
+
             // Check if it's a travel day (separate travel to/from site)
             if (IsTravelDay(dayData, resource))
             {
                 return DayType.Travel;
             }
-
-            // Check if it's a holdover day (typically weekends with 8 hours regular rate)
-           
 
             // Check if there are any hours planned for this day
             decimal totalHours = dayData.GetPlannedLabourHoursTotal() + dayData.GetPlannedTravelHoursTotal();
@@ -213,9 +211,8 @@ namespace LabourBudgetCalculator
                 case DayType.Holdover:
                     return isDarkMode ? darkModeHoldoverDay : lightHoldoverDay;
                 case DayType.Nil:
-                    return isDarkMode ? darkControlBackColor : SystemColors.Control;
                 default:
-                    return isDarkMode ? darkModeWorkDay : lightWorkDay;
+                    return isDarkMode ? Color.FromArgb(60, 60, 60) : Color.LightGray;
             }
         }
 
@@ -287,16 +284,28 @@ namespace LabourBudgetCalculator
             btnViewResults = new Button { Text = "View Results", Size = new Size(120, 30), Location = new Point(btnDeleteResource.Right + 6, btnDeleteResource.Top), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
             btnViewResults.Click += BtnViewResults_Click; this.Controls.Add(btnViewResults);
 
-            Button btnReset = new Button
+            btnBackToProjects = new Button
+            {
+                Name = "btnBackToProjects",
+                Text = "Back to Projects",
+                Size = new Size(120, 30),
+                Location = new Point(btnViewResults.Right + 6, btnViewResults.Top),
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Left
+            };
+            btnBackToProjects.Click += BtnBackToProjects_Click;
+            this.Controls.Add(btnBackToProjects);
+
+            btnReset = new Button
             {
                 Name = "btnReset",
-                Text = "Reset Values",
+                Text = "Reset",
                 Size = new Size(120, 30),
-                Location = new Point(btnViewResults.Right + 6, btnViewResults.Top), // Position right after View Results button
-                Anchor = AnchorStyles.Bottom | AnchorStyles.Left // Same anchoring as other bottom buttons
+                Location = new Point(btnBackToProjects.Right + 6, btnBackToProjects.Top),
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Left
             };
+            btnReset.Click += (sender, e) => ResetForm();
+            this.Controls.Add(btnReset);
 
-            // Inside the SetupControls method, after creating the other buttons
             btnDarkMode = new Button
             {
                 Name = "btnDarkMode",
@@ -305,7 +314,6 @@ namespace LabourBudgetCalculator
                 Location = new Point(btnReset.Right + 6, btnReset.Top),
                 Anchor = AnchorStyles.Bottom | AnchorStyles.Left
             };
-
             btnDarkMode.Click += (sender, e) => ToggleDarkMode();
             this.Controls.Add(btnDarkMode);
 
@@ -318,30 +326,6 @@ namespace LabourBudgetCalculator
 
             // REMOVED: Load saved dark mode preference (now done in constructor)
             // LoadDarkModePreference();
-
-            Button btnBackToProjects = new Button
-            {
-                Name = "btnBackToProjects",
-                Text = "Back to Projects",
-                Size = new Size(120, 30),
-                Location = new Point(btnViewResults.Right + 6, btnViewResults.Top), // Position right after View Results button
-                Anchor = AnchorStyles.Bottom | AnchorStyles.Left // Same anchoring as other bottom buttons
-            };
-
-            btnBackToProjects.Click += BtnBackToProjects_Click;
-            this.Controls.Add(btnBackToProjects);
-
-         
-            btnReset.Click += (sender, e) =>
-            {
-                // Use the helper method instead of direct Tag access
-                CommissioningResource selectedResource = GetResourceFromTabPage(tabResources.SelectedTab);
-                if (selectedResource != null)
-                {
-                    ResetResource(selectedResource);
-                }
-            };
-            this.Controls.Add(btnReset);
 
             this.Resize += (s, a) => {
                 btnAddResource.Top = this.ClientSize.Height - 55;
@@ -1525,22 +1509,38 @@ namespace LabourBudgetCalculator
                 for (int dayOfWeekIdx = 0; dayOfWeekIdx < 7; dayOfWeekIdx++)
                 {
                     DateTime calendarDateForBox = currentWeekSunday.AddDays(dayOfWeekIdx);
-                    // Find the entry by Date in the dictionary's values
                     ResourceDayData dayEntryForBox = resource.DailyData.Values.FirstOrDefault(d => d.Date.Date == calendarDateForBox.Date);
-                    // Find the key associated with this entry (needed for DailySchedulePlanned_Changed)
-                    int dayKeyForBox = -99; // Default/invalid key
+                    int dayKeyForBox = -99;
                     if (dayEntryForBox != null)
                     {
                         var kvp = resource.DailyData.FirstOrDefault(pair => pair.Value == dayEntryForBox);
-                        if (!kvp.Equals(default(KeyValuePair<int, ResourceDayData>))) // Check if kvp was found
+                        if (!kvp.Equals(default(KeyValuePair<int, ResourceDayData>)))
                             dayKeyForBox = kvp.Key;
                     }
 
                     Panel dayBox = new Panel { Name = $"dayBox_{calendarDateForBox:yyyyMMdd}", Size = new Size(dayBoxWidth, dayBoxHeight), BorderStyle = BorderStyle.FixedSingle, Tag = calendarDateForBox, Margin = new Padding(0, 0, margin, margin) };
                     Label lblDateOnly = new Label { Text = $"{calendarDateForBox:ddd, MMM dd}", Location = new Point(3, 3), AutoSize = true }; dayBox.Controls.Add(lblDateOnly);
 
+                    // Add right-click context menu for manual day type selection
                     if (dayEntryForBox != null && dayKeyForBox != -99)
-                    { // Ensure we have a valid entry and its key
+                    {
+                        ContextMenuStrip dayTypeMenu = new ContextMenuStrip();
+                        dayTypeMenu.Items.Add("Work Day", null, (s, e) => SetManualDayTypeAndUpdate(dayEntryForBox, resource, dayKeyForBox, DayType.Work));
+                        dayTypeMenu.Items.Add("Travel Day", null, (s, e) => SetManualDayTypeAndUpdate(dayEntryForBox, resource, dayKeyForBox, DayType.Travel));
+                        dayTypeMenu.Items.Add("Holdover", null, (s, e) => SetManualDayTypeAndUpdate(dayEntryForBox, resource, dayKeyForBox, DayType.Holdover));
+                        dayTypeMenu.Items.Add("No Activity", null, (s, e) => SetManualDayTypeAndUpdate(dayEntryForBox, resource, dayKeyForBox, DayType.Nil));
+                        dayTypeMenu.Items.Add(new ToolStripSeparator());
+                        dayTypeMenu.Items.Add("Auto (Reset)", null, (s, e) => SetManualDayTypeAndUpdate(dayEntryForBox, resource, dayKeyForBox, null));
+                        dayBox.MouseUp += (s, e) => {
+                            if (e.Button == MouseButtons.Right)
+                            {
+                                dayTypeMenu.Show(dayBox, e.Location);
+                            }
+                        };
+                    }
+
+                    if (dayEntryForBox != null && dayKeyForBox != -99)
+                    {
                         dayBox.BackColor = SystemColors.Window; lblDateOnly.Font = new Font(dayBox.Font, FontStyle.Bold);
                         CreateDayContent_Planning(dayBox, dayKeyForBox, dayEntryForBox, resource);
                         UpdateDayPanelColors(dayBox, dayEntryForBox, resource);
@@ -1553,9 +1553,83 @@ namespace LabourBudgetCalculator
             parentPanel.ResumeLayout(false);
         }
 
+        // Helper to set manual day type and update planned values/UI
+        private void SetManualDayTypeAndUpdate(ResourceDayData dayData, CommissioningResource resource, int dayKey, DayType? manualType)
+        {
+            dayData.ManualDayType = manualType;
+            switch (manualType)
+            {
+                case DayType.Work:
+                    dayData.PlannedRegularLabourHours = resource.HoursPerDay;
+                    dayData.PlannedOvertimeLabourHours = 0;
+                    dayData.PlannedPremiumLabourHours = 0;
+                    dayData.PlannedRegularTravelHours = 0;
+                    dayData.PlannedOvertimeTravelHours = 0;
+                    dayData.PlannedPremiumTravelHours = 0;
+                    dayData.PlannedStartTime = resource.DefaultStartTime;
+                    dayData.PlannedEndTime = null;
+                    break;
+                case DayType.Travel:
+                    dayData.PlannedRegularLabourHours = 0;
+                    dayData.PlannedOvertimeLabourHours = 0;
+                    dayData.PlannedPremiumLabourHours = 0;
+                    dayData.PlannedRegularTravelHours = resource.TravelTime;
+                    dayData.PlannedOvertimeTravelHours = 0;
+                    dayData.PlannedPremiumTravelHours = 0;
+                    dayData.PlannedStartTime = resource.DefaultStartTime;
+                    dayData.PlannedEndTime = null;
+                    break;
+                case DayType.Holdover:
+                    dayData.PlannedRegularLabourHours = 8;
+                    dayData.PlannedOvertimeLabourHours = 0;
+                    dayData.PlannedPremiumLabourHours = 0;
+                    dayData.PlannedRegularTravelHours = 0;
+                    dayData.PlannedOvertimeTravelHours = 0;
+                    dayData.PlannedPremiumTravelHours = 0;
+                    dayData.PlannedStartTime = null;
+                    dayData.PlannedEndTime = null;
+                    break;
+                case DayType.Nil:
+                    dayData.PlannedRegularLabourHours = 0;
+                    dayData.PlannedOvertimeLabourHours = 0;
+                    dayData.PlannedPremiumLabourHours = 0;
+                    dayData.PlannedRegularTravelHours = 0;
+                    dayData.PlannedOvertimeTravelHours = 0;
+                    dayData.PlannedPremiumTravelHours = 0;
+                    dayData.PlannedStartTime = null;
+                    dayData.PlannedEndTime = null;
+                    break;
+                case null:
+                    // Auto: clear manual override, re-initialize from schedule for this day
+                    dayData.ManualDayType = null;
+                    resource.InitializeFromSchedule();
+                    break;
+            }
+            // Mark dirty and update UI
+            resource.IsDirty = true;
+            currentProject.IsDirty = true;
+            // Redraw the schedule for the current tab
+            RegenerateSchedule(tabResources.SelectedTab, resource);
+        }
+
         private void CreateDayContent_Planning(Panel dayBox, int dayKey, ResourceDayData dayDataEntry, CommissioningResource resource)
         {
+            var dayType = DetermineDayType(dayDataEntry, resource);
+            if (dayType == DayType.Nil)
+            {
+                // No controls for No Activity day
+                return;
+            }
             int yPos = 28; int xLabel = 5; int xControl = 35; int controlWidth = dayBox.ClientSize.Width - xControl - 5;
+
+            if (dayType == DayType.Holdover)
+            {
+                // Only show a disabled Hours control set to 8
+                Label lblHoldoverHours = new Label { Text = "Hours", Location = new Point(xLabel, yPos), AutoSize = true, Font = new Font(this.Font.FontFamily, 7) };
+                NumericUpDown numHoldoverHours = new NumericUpDown { Name = $"numPlannedHours_{dayKey}", Location = new Point(45, yPos - 2), Size = new Size(50, 18), Minimum = 0, Maximum = 24, DecimalPlaces = 1, Increment = 0.5m, Value = 8, Tag = dayDataEntry, Font = new Font(this.Font.FontFamily, 7), Enabled = false };
+                dayBox.Controls.AddRange(new Control[] { lblHoldoverHours, numHoldoverHours });
+                return;
+            }
 
             Label lblPlannedStart = new Label { Text = "Start", Location = new Point(xLabel, yPos), Size = new Size(30, 12), Font = new Font(this.Font.FontFamily, 7) };
             ComboBox comboPlannedStart = new ComboBox { Name = $"comboPlannedStart_{dayKey}", Location = new Point(xControl, yPos - 2), Size = new Size(Math.Max(65, controlWidth), 21), DropDownStyle = ComboBoxStyle.DropDownList, Tag = dayDataEntry, Font = new Font(this.Font.FontFamily, 7) };
@@ -1567,7 +1641,6 @@ namespace LabourBudgetCalculator
             comboPlannedStart.Leave += (s, e) => {
                 if (comboPlannedStart.SelectedItem?.ToString() != comboPlannedStart_OriginalValue) {
                     DailySchedulePlanned_Changed(comboPlannedStart, e, resource, dayKey);
-                    resource.InitializeFromSchedule();
                     RegenerateSchedule(tabResources.SelectedTab, resource);
                 }
             };
@@ -1588,7 +1661,6 @@ namespace LabourBudgetCalculator
                     redrawDelayTimer = new Timer { Interval = 400 };
                     redrawDelayTimer.Tick += (sender2, e2) => {
                         redrawDelayTimer.Stop();
-                        resource.InitializeFromSchedule();
                         RegenerateSchedule(tabResources.SelectedTab, resource);
                     };
                 }
@@ -1612,7 +1684,6 @@ namespace LabourBudgetCalculator
                     redrawDelayTimer = new Timer { Interval = 400 };
                     redrawDelayTimer.Tick += (sender2, e2) => {
                         redrawDelayTimer.Stop();
-                        resource.InitializeFromSchedule();
                         RegenerateSchedule(tabResources.SelectedTab, resource);
                     };
                 }
@@ -2025,13 +2096,13 @@ namespace LabourBudgetCalculator
 
             // Reset basic properties to defaults - these are directly applied to controls
             var nDS = FindControlInTab<NumericUpDown>(tab, "numDaysOnSite");
-            if (nDS != null) nDS.Value = 5;
+            if (nDS != null) nDS.Value = 1;
 
             var nHPD = FindControlInTab<NumericUpDown>(tab, "numHoursPerDay");
             if (nHPD != null) nHPD.Value = 8m;
 
             var dtp = FindControlInTab<DateTimePicker>(tab, "dtpResourceStartDate");
-            if (dtp != null) dtp.Value = DateTime.Today;
+            if (dtp != null) dtp.Value = DateTime.Today.AddDays(1);
 
             var cbST = FindControlInTab<ComboBox>(tab, "comboBoxStartTime");
             if (cbST != null && cbST.Items.Count > 0)
@@ -2303,6 +2374,83 @@ namespace LabourBudgetCalculator
             }
             _resultsWindow?.Close();
             base.OnFormClosing(e);
+        }
+
+        private void ResetForm()
+        {
+            DialogResult result = MessageBox.Show(
+                "Are you sure you want to reset all values to default?",
+                "Confirm Reset",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+            if (result != DialogResult.Yes)
+                return;
+
+            foreach (TabPage tab in tabResources.TabPages)
+            {
+                var resource = GetResourceFromTabPage(tab);
+                if (resource == null) continue;
+
+                // Reset all user-editable controls in the tab
+                FindControlInTab<NumericUpDown>(tab, "numDaysOnSite")?.SetValue(c => c.Value = 1);
+                FindControlInTab<NumericUpDown>(tab, "numHoursPerDay")?.SetValue(c => c.Value = 8);
+                FindControlInTab<NumericUpDown>(tab, "numDiscount")?.SetValue(c => c.Value = 0);
+                FindControlInTab<NumericUpDown>(tab, "numLunchDuration")?.SetValue(c => c.Value = 0.5m);
+                FindControlInTab<NumericUpDown>(tab, "numTravelDistance")?.SetValue(c => c.Value = 0);
+                FindControlInTab<NumericUpDown>(tab, "numTravelTime")?.SetValue(c => c.Value = 0);
+                FindControlInTab<NumericUpDown>(tab, "numDailyTravelDistance")?.SetValue(c => c.Value = 0);
+                FindControlInTab<NumericUpDown>(tab, "numDailyTravelTime")?.SetValue(c => c.Value = 0);
+                FindControlInTab<NumericUpDown>(tab, "numFlightCost")?.SetValue(c => c.Value = resource.FlightCost);
+                FindControlInTab<NumericUpDown>(tab, "numRentalCarRate")?.SetValue(c => c.Value = resource.RentalCarRate);
+                FindControlInTab<NumericUpDown>(tab, "numHotelRate")?.SetValue(c => c.Value = resource.HotelRate);
+                FindControlInTab<NumericUpDown>(tab, "numMileageRate")?.SetValue(c => c.Value = resource.MileageRate);
+                FindControlInTab<NumericUpDown>(tab, "numPerDiemRate")?.SetValue(c => c.Value = resource.PerDiemRate);
+                FindControlInTab<NumericUpDown>(tab, "numOtherExpenses")?.SetValue(c => c.Value = 0);
+
+                FindControlInTab<CheckBox>(tab, "chkEmergency")?.SetValue(c => c.Checked = false);
+                FindControlInTab<CheckBox>(tab, "chkSeparateTravelTo")?.SetValue(c => c.Checked = false);
+                FindControlInTab<CheckBox>(tab, "chkSeparateTravelFrom")?.SetValue(c => c.Checked = false);
+                FindControlInTab<CheckBox>(tab, "chkRentalCarRequired")?.SetValue(c => c.Checked = false);
+                FindControlInTab<CheckBox>(tab, "chkHotelRequired")?.SetValue(c => c.Checked = false);
+
+                // Set StartDate to next Monday from today
+                var dtp = FindControlInTab<DateTimePicker>(tab, "dtpResourceStartDate");
+                if (dtp != null)
+                {
+                    int daysUntilMonday = ((int)DayOfWeek.Monday - (int)DateTime.Today.DayOfWeek + 7) % 7;
+                    dtp.Value = DateTime.Today.AddDays(daysUntilMonday == 0 ? 7 : daysUntilMonday);
+                }
+
+                // Reset ComboBoxes to first/default value
+                var cbRateSheet = FindControlInTab<ComboBox>(tab, "comboBoxRateSheet");
+                if (cbRateSheet != null && cbRateSheet.Items.Count > 0) cbRateSheet.SelectedIndex = 0;
+                var cbStartTime = FindControlInTab<ComboBox>(tab, "comboBoxStartTime");
+                if (cbStartTime != null && cbStartTime.Items.Count > 0) cbStartTime.SelectedIndex = 0;
+                var cbTravelMethod = FindControlInTab<ComboBox>(tab, "comboBoxTravelMethod");
+                if (cbTravelMethod != null && cbTravelMethod.Items.Count > 0) cbTravelMethod.SelectedIndex = 0;
+
+                // Reset technician name if present
+                var txtTechnician = FindControlInTab<TextBox>(tab, "txtTechnicianName");
+                if (txtTechnician != null) txtTechnician.Text = "Technician";
+
+                // Clear all manual day type overrides
+                if (resource.DailyData != null)
+                {
+                    foreach (var day in resource.DailyData.Values)
+                    {
+                        day.ManualDayType = null;
+                    }
+                }
+
+                // Update resource object from UI controls
+                UpdateResourceFromUI(resource);
+                // Regenerate schedule
+                resource.InitializeFromSchedule();
+                resource.IsDirty = false;
+                RegenerateSchedule(tab, resource);
+            }
+            currentProject.IsDirty = true;
+            MessageBox.Show("All values have been reset to default.", "Reset Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
         public static class ControlExtensions { public static void SetValue<T>(this T control, Action<T> action) where T : Control { if (control != null) action(control); } }

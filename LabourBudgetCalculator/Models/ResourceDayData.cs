@@ -7,6 +7,8 @@ namespace LabourBudgetCalculator.Models
     {
         public DateTime Date { get; set; }
 
+        public DayType? ManualDayType { get; set; }
+
         // Planned values
         public string PlannedStartTime { get; set; }
         public string PlannedEndTime { get; set; }
@@ -80,5 +82,14 @@ namespace LabourBudgetCalculator.Models
             return ActualHotelCost + ActualPerDiemCost + ActualMileageCost +
                    ActualFlightCost + ActualRentalCarCost;
         }
+
+
+    }
+    public enum DayType
+    {
+        Work,
+        Travel,
+        Holdover,
+        Nil
     }
 }
