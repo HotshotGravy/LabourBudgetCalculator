@@ -723,7 +723,12 @@ namespace LabourBudgetCalculator
                         var kvp = _resource.DailyData.FirstOrDefault(entry => entry.Value == dayData);
                         dayKey = kvp.Value != null ? kvp.Key : -1;
                     }
-                    if (dayData != null && dayKey != -1)
+                    // Debug output for travel rows
+                    if (dataType == "TravelReg" || dataType == "TravelOT" || dataType == "TravelPrem")
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[ResultsGrid] {displayDate:yyyy-MM-dd ddd} Travel: Reg={dayData?.PlannedRegularTravelHours}, OT={dayData?.PlannedOvertimeTravelHours}, Prem={dayData?.PlannedPremiumTravelHours}");
+                    }
+                    if (dayData != null)
                     {
                         decimal plannedValue = GetPlannedValue(dayData, dataType);
                         decimal actualValue = GetActualValue(dayData, dataType);
@@ -732,13 +737,13 @@ namespace LabourBudgetCalculator
                         if (IsHoursType(dataType)) plannedLabel.Text = plannedValue.ToString("F1");
                         else plannedLabel.Text = plannedValue.ToString("C2");
                         AddControlToGrid(plannedLabel, currentGridColumn, gridRow);
-                        _plannedLabels[$"P_{dataType}_{dayKey}"] = plannedLabel;
+                        if (dayKey != -1) _plannedLabels[$"P_{dataType}_{dayKey}"] = plannedLabel;
                         AddEditableCell(gridRow, currentGridColumn + 1, actualValue, dataType, dayKey, dayData);
                         var deltaLabel = CreateLabel(FormatValue(deltaValue, dataType), false); deltaLabel.Tag = new DeltaTag("Delta", deltaValue);
                         deltaLabel.BackColor = Color.Transparent;
                         SetDeltaLabelColor(deltaLabel, deltaValue);
                         AddControlToGrid(deltaLabel, currentGridColumn + 2, gridRow);
-                        _deltaLabels[$"D_{dataType}_{dayKey}"] = deltaLabel;
+                        if (dayKey != -1) _deltaLabels[$"D_{dataType}_{dayKey}"] = deltaLabel;
                     }
                     else
                     {
@@ -782,14 +787,13 @@ namespace LabourBudgetCalculator
                         deltaSubtotal = actualSubtotal - plannedSubtotal;
                         string cleanLabelText = labelText.Replace(" ", "").Replace("-", "");
                         string baseKey = $"SUB_{cleanLabelText}_{dayKey}";
-                        var pL = CreateLabel(plannedSubtotal.ToString("C2"), true); pL.Tag = "Subtotal";
+                        var pL = CreateLabel(plannedSubtotal.ToString("C2"), true); pL.Tag = "Subtotal"; pL.BackColor = Color.Yellow;
                         AddControlToGrid(pL, currentGridColumn, gridRow);
                         if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_P"] = pL;
-                        var aL = CreateLabel(actualSubtotal.ToString("C2"), true); aL.Tag = "Subtotal";
+                        var aL = CreateLabel(actualSubtotal.ToString("C2"), true); aL.Tag = "Subtotal"; aL.BackColor = Color.Yellow;
                         AddControlToGrid(aL, currentGridColumn + 1, gridRow);
                         if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_A"] = aL;
-                        var dL = CreateLabel(deltaSubtotal.ToString("C2"), true); dL.Tag = new DeltaTag("Delta", deltaSubtotal);
-                        dL.BackColor = Color.Yellow;
+                        var dL = CreateLabel(deltaSubtotal.ToString("C2"), true); dL.Tag = new DeltaTag("Delta", deltaSubtotal); dL.BackColor = Color.Yellow;
                         SetDeltaLabelColor(dL, deltaSubtotal);
                         AddControlToGrid(dL, currentGridColumn + 2, gridRow);
                         if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_D"] = dL;
@@ -797,10 +801,9 @@ namespace LabourBudgetCalculator
                     else
                     {
                         // No ResourceDayData: blank cells
-                        var empty1 = CreateLabel(string.Empty, true); empty1.Tag = "Subtotal";
-                        var empty2 = CreateLabel(string.Empty, true); empty2.Tag = "Subtotal";
-                        var empty3 = CreateLabel(string.Empty, true); empty3.Tag = new DeltaTag("Delta", 0);
-                        empty3.BackColor = Color.Yellow;
+                        var empty1 = CreateLabel(string.Empty, true); empty1.Tag = "Subtotal"; empty1.BackColor = Color.Yellow;
+                        var empty2 = CreateLabel(string.Empty, true); empty2.Tag = "Subtotal"; empty2.BackColor = Color.Yellow;
+                        var empty3 = CreateLabel(string.Empty, true); empty3.Tag = new DeltaTag("Delta", 0); empty3.BackColor = Color.Yellow;
                         AddControlToGrid(empty1, currentGridColumn, gridRow);
                         AddControlToGrid(empty2, currentGridColumn + 1, gridRow);
                         AddControlToGrid(empty3, currentGridColumn + 2, gridRow);
@@ -832,14 +835,13 @@ namespace LabourBudgetCalculator
                         actualTotal = CalculateDayTotal(dayData, false);
                         deltaTotal = actualTotal - plannedTotal;
                         string baseKey = $"TOTAL_Day_{dayKey}";
-                        var pL = CreateLabel(plannedTotal.ToString("C2"), true); pL.Tag = "Total";
+                        var pL = CreateLabel(plannedTotal.ToString("C2"), true); pL.Tag = "Total"; pL.BackColor = Color.Yellow;
                         AddControlToGrid(pL, currentGridColumn, gridRow);
                         if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_P"] = pL;
-                        var aL = CreateLabel(actualTotal.ToString("C2"), true); aL.Tag = "Total";
+                        var aL = CreateLabel(actualTotal.ToString("C2"), true); aL.Tag = "Total"; aL.BackColor = Color.Yellow;
                         AddControlToGrid(aL, currentGridColumn + 1, gridRow);
                         if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_A"] = aL;
-                        var dL = CreateLabel(deltaTotal.ToString("C2"), true); dL.Tag = new DeltaTag("Delta", deltaTotal);
-                        dL.BackColor = Color.Yellow;
+                        var dL = CreateLabel(deltaTotal.ToString("C2"), true); dL.Tag = new DeltaTag("Delta", deltaTotal); dL.BackColor = Color.Yellow;
                         SetDeltaLabelColor(dL, deltaTotal);
                         AddControlToGrid(dL, currentGridColumn + 2, gridRow);
                         if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_D"] = dL;
@@ -847,10 +849,9 @@ namespace LabourBudgetCalculator
                     else
                     {
                         // No ResourceDayData: blank cells
-                        var empty1 = CreateLabel(string.Empty, true); empty1.Tag = "Total";
-                        var empty2 = CreateLabel(string.Empty, true); empty2.Tag = "Total";
-                        var empty3 = CreateLabel(string.Empty, true); empty3.Tag = new DeltaTag("Delta", 0);
-                        empty3.BackColor = Color.Yellow;
+                        var empty1 = CreateLabel(string.Empty, true); empty1.Tag = "Total"; empty1.BackColor = Color.Yellow;
+                        var empty2 = CreateLabel(string.Empty, true); empty2.Tag = "Total"; empty2.BackColor = Color.Yellow;
+                        var empty3 = CreateLabel(string.Empty, true); empty3.Tag = new DeltaTag("Delta", 0); empty3.BackColor = Color.Yellow;
                         AddControlToGrid(empty1, currentGridColumn, gridRow);
                         AddControlToGrid(empty2, currentGridColumn + 1, gridRow);
                         AddControlToGrid(empty3, currentGridColumn + 2, gridRow);
@@ -1058,14 +1059,13 @@ namespace LabourBudgetCalculator
                         deltaSubtotal = actualSubtotal - plannedSubtotal;
                     }
                     string baseKey = $"SUB_Hours_{dayKey}";
-                    var pL = CreateLabel(plannedSubtotal.ToString("F1"), true); pL.Tag = "Subtotal";
+                    var pL = CreateLabel(plannedSubtotal.ToString("F1"), true); pL.Tag = "Subtotal"; pL.BackColor = Color.Yellow;
                     AddControlToGrid(pL, currentGridColumn, gridRow);
                     if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_P"] = pL;
-                    var aL = CreateLabel(actualSubtotal.ToString("F1"), true); aL.Tag = "Subtotal";
+                    var aL = CreateLabel(actualSubtotal.ToString("F1"), true); aL.Tag = "Subtotal"; aL.BackColor = Color.Yellow;
                     AddControlToGrid(aL, currentGridColumn + 1, gridRow);
                     if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_A"] = aL;
-                    var dL = CreateLabel(deltaSubtotal.ToString("F1"), true); dL.Tag = new DeltaTag("Delta", deltaSubtotal);
-                    dL.BackColor = Color.Yellow;
+                    var dL = CreateLabel(deltaSubtotal.ToString("F1"), true); dL.Tag = new DeltaTag("Delta", deltaSubtotal); dL.BackColor = Color.Yellow;
                     SetDeltaLabelColor(dL, deltaSubtotal);
                     AddControlToGrid(dL, currentGridColumn + 2, gridRow);
                     if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_D"] = dL;
