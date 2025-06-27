@@ -1573,9 +1573,12 @@ namespace LabourBudgetCalculator
                     dayData.PlannedRegularLabourHours = 0;
                     dayData.PlannedOvertimeLabourHours = 0;
                     dayData.PlannedPremiumLabourHours = 0;
-                    dayData.PlannedRegularTravelHours = resource.TravelTime;
-                    dayData.PlannedOvertimeTravelHours = 0;
-                    dayData.PlannedPremiumTravelHours = 0;
+                    // Use breakdown logic for travel hours
+                    var travelBreakdown = LabourBudgetCalculator.Helpers.HourCategorizerUtil.CategorizeDailyHours(
+                        0m, resource.TravelTime, dayData.Date.DayOfWeek, resource.IsEmergency, false);
+                    dayData.PlannedRegularTravelHours = travelBreakdown.RegularTravelHours;
+                    dayData.PlannedOvertimeTravelHours = travelBreakdown.OvertimeTravelHours;
+                    dayData.PlannedPremiumTravelHours = travelBreakdown.PremiumTravelHours;
                     dayData.PlannedStartTime = resource.DefaultStartTime;
                     dayData.PlannedEndTime = null;
                     break;

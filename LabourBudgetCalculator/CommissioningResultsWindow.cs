@@ -201,7 +201,16 @@ namespace LabourBudgetCalculator
 
                 foreach (var resource in _project.Resources)
                 {
-                    
+                    // Debug output: print all ResourceDayData keys and dates
+                    System.Diagnostics.Debug.WriteLine($"Resource: {resource.TechnicianName}");
+                    if (resource.DailyData != null)
+                    {
+                        foreach (var kvp in resource.DailyData.OrderBy(kvp => kvp.Value.Date))
+                        {
+                            var dayData = kvp.Value;
+                            System.Diagnostics.Debug.WriteLine($"  Key: {kvp.Key}, Date: {dayData.Date:yyyy-MM-dd ddd}, Type: {dayData.ManualDayType?.ToString() ?? "Auto"}, PlannedLabour: {dayData.PlannedRegularLabourHours}, PlannedTravel: {dayData.PlannedRegularTravelHours + dayData.PlannedOvertimeTravelHours + dayData.PlannedPremiumTravelHours}");
+                        }
+                    }
                     Helpers.ExpenseCalculator.CalculateResourceExpenses(resource);
                     resource.CalculateResourceTotals(); // Calculates aggregate totals on resource object
                 }
@@ -628,11 +637,11 @@ namespace LabourBudgetCalculator
                 {
                     if (ctrl.Tag is DeltaTag deltaTag && deltaTag.Type == "Delta")
                     {
-                        // Check if this label is a subtotal or total delta
+                        // Robust check: if this label is a subtotal or total delta (by _subtotalAndTotalLabels key ending with _D)
                         bool isSubtotalOrTotal = false;
                         foreach (var kvp in _subtotalAndTotalLabels)
                         {
-                            if (kvp.Value == ctrl)
+                            if (kvp.Value == ctrl && kvp.Key.EndsWith("_D"))
                             {
                                 isSubtotalOrTotal = true;
                                 break;
@@ -703,40 +712,37 @@ namespace LabourBudgetCalculator
                 headerLabel.TextAlign = ContentAlignment.MiddleLeft;
                 headerLabel.Padding = new Padding(5, 0, 0, 0);
                 AddControlToGrid(headerLabel, 0, gridRow);
-
                 int currentGridColumn = 1;
                 foreach (var displayDate in displayDates)
                 {
                     if (currentGridColumn + 2 >= _gridPanel.ColumnCount) break;
-
                     ResourceDayData dayData = _resource.DailyData.Values.FirstOrDefault(rd => rd != null && rd.Date.Date == displayDate.Date);
                     int dayKey = -1;
                     if (dayData != null)
                     {
                         var kvp = _resource.DailyData.FirstOrDefault(entry => entry.Value == dayData);
-                        dayKey = kvp.Value != null ? kvp.Key : -1; // dayKey is the original dictionary key
+                        dayKey = kvp.Value != null ? kvp.Key : -1;
                     }
-
                     if (dayData != null && dayKey != -1)
                     {
                         decimal plannedValue = GetPlannedValue(dayData, dataType);
                         decimal actualValue = GetActualValue(dayData, dataType);
                         decimal deltaValue = actualValue - plannedValue;
-
                         var plannedLabel = CreateLabel(FormatValue(plannedValue, dataType), false); plannedLabel.Tag = "Normal";
-                        if (IsHoursType(dataType) && plannedValue != 0) plannedLabel.Font = new Font(this.Font, FontStyle.Bold);
+                        if (IsHoursType(dataType)) plannedLabel.Text = plannedValue.ToString("F1");
+                        else plannedLabel.Text = plannedValue.ToString("C2");
                         AddControlToGrid(plannedLabel, currentGridColumn, gridRow);
                         _plannedLabels[$"P_{dataType}_{dayKey}"] = plannedLabel;
-
                         AddEditableCell(gridRow, currentGridColumn + 1, actualValue, dataType, dayKey, dayData);
-
                         var deltaLabel = CreateLabel(FormatValue(deltaValue, dataType), false); deltaLabel.Tag = new DeltaTag("Delta", deltaValue);
+                        deltaLabel.BackColor = Color.Transparent;
                         SetDeltaLabelColor(deltaLabel, deltaValue);
                         AddControlToGrid(deltaLabel, currentGridColumn + 2, gridRow);
                         _deltaLabels[$"D_{dataType}_{dayKey}"] = deltaLabel;
                     }
                     else
                     {
+                        // No ResourceDayData: blank cells
                         var empty1 = CreateLabel(string.Empty, false); empty1.Tag = "Normal";
                         var empty2 = CreateLabel(string.Empty, false); empty2.Tag = "Normal";
                         var empty3 = CreateLabel(string.Empty, false); empty3.Tag = "Normal";
@@ -753,7 +759,6 @@ namespace LabourBudgetCalculator
                 rowHeaderLabel.TextAlign = ContentAlignment.MiddleLeft;
                 rowHeaderLabel.Padding = new Padding(5, 0, 0, 0);
                 AddControlToGrid(rowHeaderLabel, 0, gridRow);
-
                 int currentGridColumn = 1;
                 foreach (var displayDate in displayDates)
                 {
@@ -765,31 +770,41 @@ namespace LabourBudgetCalculator
                         var kvp = _resource.DailyData.FirstOrDefault(entry => entry.Value == dayData);
                         dayKey = kvp.Value != null ? kvp.Key : -1;
                     }
-
                     decimal plannedSubtotal = 0, actualSubtotal = 0, deltaSubtotal = 0;
                     if (dayData != null)
                     {
-                        plannedSubtotal = CalculateSubtotal(dayData, isChargesSubtotal, true);
-                        actualSubtotal = CalculateSubtotal(dayData, isChargesSubtotal, false);
+                        plannedSubtotal = isChargesSubtotal
+                            ? CalculateSubtotal(dayData, true, true)
+                            : CalculateSubtotal(dayData, false, true);
+                        actualSubtotal = isChargesSubtotal
+                            ? CalculateSubtotal(dayData, true, false)
+                            : CalculateSubtotal(dayData, false, false);
                         deltaSubtotal = actualSubtotal - plannedSubtotal;
+                        string cleanLabelText = labelText.Replace(" ", "").Replace("-", "");
+                        string baseKey = $"SUB_{cleanLabelText}_{dayKey}";
+                        var pL = CreateLabel(plannedSubtotal.ToString("C2"), true); pL.Tag = "Subtotal";
+                        AddControlToGrid(pL, currentGridColumn, gridRow);
+                        if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_P"] = pL;
+                        var aL = CreateLabel(actualSubtotal.ToString("C2"), true); aL.Tag = "Subtotal";
+                        AddControlToGrid(aL, currentGridColumn + 1, gridRow);
+                        if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_A"] = aL;
+                        var dL = CreateLabel(deltaSubtotal.ToString("C2"), true); dL.Tag = new DeltaTag("Delta", deltaSubtotal);
+                        dL.BackColor = Color.Yellow;
+                        SetDeltaLabelColor(dL, deltaSubtotal);
+                        AddControlToGrid(dL, currentGridColumn + 2, gridRow);
+                        if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_D"] = dL;
                     }
-
-                    string cleanLabelText = labelText.Replace(" ", "").Replace("-", "");
-                    string baseKey = $"SUB_{cleanLabelText}_{dayKey}"; // Use dayKey if found for uniqueness
-
-                    var pL = CreateLabel(plannedSubtotal.ToString("C2"), true); pL.Tag = "Subtotal";
-                    AddControlToGrid(pL, currentGridColumn, gridRow);
-                    if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_P"] = pL;
-
-                    var aL = CreateLabel(actualSubtotal.ToString("C2"), true); aL.Tag = "Subtotal";
-                    AddControlToGrid(aL, currentGridColumn + 1, gridRow);
-                    if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_A"] = aL;
-
-                    var dL = CreateLabel(deltaSubtotal.ToString("C2"), true); dL.Tag = new DeltaTag("Delta", deltaSubtotal);
-                    SetDeltaLabelColor(dL, deltaSubtotal);
-                    AddControlToGrid(dL, currentGridColumn + 2, gridRow);
-                    if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_D"] = dL;
-
+                    else
+                    {
+                        // No ResourceDayData: blank cells
+                        var empty1 = CreateLabel(string.Empty, true); empty1.Tag = "Subtotal";
+                        var empty2 = CreateLabel(string.Empty, true); empty2.Tag = "Subtotal";
+                        var empty3 = CreateLabel(string.Empty, true); empty3.Tag = new DeltaTag("Delta", 0);
+                        empty3.BackColor = Color.Yellow;
+                        AddControlToGrid(empty1, currentGridColumn, gridRow);
+                        AddControlToGrid(empty2, currentGridColumn + 1, gridRow);
+                        AddControlToGrid(empty3, currentGridColumn + 2, gridRow);
+                    }
                     currentGridColumn += 3;
                 }
             }
@@ -799,7 +814,6 @@ namespace LabourBudgetCalculator
                 rowHeaderLabel.TextAlign = ContentAlignment.MiddleLeft;
                 rowHeaderLabel.Padding = new Padding(5, 0, 0, 0);
                 AddControlToGrid(rowHeaderLabel, 0, gridRow);
-
                 int currentGridColumn = 1;
                 foreach (var displayDate in displayDates)
                 {
@@ -811,30 +825,36 @@ namespace LabourBudgetCalculator
                         var kvp = _resource.DailyData.FirstOrDefault(entry => entry.Value == dayData);
                         dayKey = kvp.Value != null ? kvp.Key : -1;
                     }
-
                     decimal plannedTotal = 0, actualTotal = 0, deltaTotal = 0;
                     if (dayData != null)
                     {
                         plannedTotal = CalculateDayTotal(dayData, true);
                         actualTotal = CalculateDayTotal(dayData, false);
                         deltaTotal = actualTotal - plannedTotal;
+                        string baseKey = $"TOTAL_Day_{dayKey}";
+                        var pL = CreateLabel(plannedTotal.ToString("C2"), true); pL.Tag = "Total";
+                        AddControlToGrid(pL, currentGridColumn, gridRow);
+                        if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_P"] = pL;
+                        var aL = CreateLabel(actualTotal.ToString("C2"), true); aL.Tag = "Total";
+                        AddControlToGrid(aL, currentGridColumn + 1, gridRow);
+                        if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_A"] = aL;
+                        var dL = CreateLabel(deltaTotal.ToString("C2"), true); dL.Tag = new DeltaTag("Delta", deltaTotal);
+                        dL.BackColor = Color.Yellow;
+                        SetDeltaLabelColor(dL, deltaTotal);
+                        AddControlToGrid(dL, currentGridColumn + 2, gridRow);
+                        if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_D"] = dL;
                     }
-
-                    string baseKey = $"TOTAL_Day_{dayKey}"; // Use dayKey for uniqueness
-
-                    var pL = CreateLabel(plannedTotal.ToString("C2"), true); pL.Tag = "Total";
-                    AddControlToGrid(pL, currentGridColumn, gridRow);
-                    if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_P"] = pL;
-
-                    var aL = CreateLabel(actualTotal.ToString("C2"), true); aL.Tag = "Total";
-                    AddControlToGrid(aL, currentGridColumn + 1, gridRow);
-                    if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_A"] = aL;
-
-                    var dL = CreateLabel(deltaTotal.ToString("C2"), true); dL.Tag = new DeltaTag("Delta", deltaTotal);
-                    SetDeltaLabelColor(dL, deltaTotal);
-                    AddControlToGrid(dL, currentGridColumn + 2, gridRow);
-                    if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_D"] = dL;
-
+                    else
+                    {
+                        // No ResourceDayData: blank cells
+                        var empty1 = CreateLabel(string.Empty, true); empty1.Tag = "Total";
+                        var empty2 = CreateLabel(string.Empty, true); empty2.Tag = "Total";
+                        var empty3 = CreateLabel(string.Empty, true); empty3.Tag = new DeltaTag("Delta", 0);
+                        empty3.BackColor = Color.Yellow;
+                        AddControlToGrid(empty1, currentGridColumn, gridRow);
+                        AddControlToGrid(empty2, currentGridColumn + 1, gridRow);
+                        AddControlToGrid(empty3, currentGridColumn + 2, gridRow);
+                    }
                     currentGridColumn += 3;
                 }
             }
@@ -988,14 +1008,18 @@ namespace LabourBudgetCalculator
             private void AddDataRowsAndTotals(List<DateTime> displayDates)
             {
                 int row = 2;
-                // Example row labels and data types (customize as needed)
+                // Add hour subtotals for labour and travel
                 AddDataRow(row++, "Regular Labour", displayDates, "ServiceReg");
                 AddDataRow(row++, "Overtime Labour", displayDates, "ServiceOT");
                 AddDataRow(row++, "Premium Labour", displayDates, "ServicePrem");
+                // Add subtotal row for labour hours
+                AddHourSubtotalRow(row++, "Subtotal Hours - Labour", displayDates, new[] { "ServiceReg", "ServiceOT", "ServicePrem" });
                 AddSubtotalRow(row++, "Subtotals - Charges", displayDates, true);
                 AddDataRow(row++, "Regular Travel", displayDates, "TravelReg");
                 AddDataRow(row++, "Overtime Travel", displayDates, "TravelOT");
                 AddDataRow(row++, "Premium Travel", displayDates, "TravelPrem");
+                // Add subtotal row for travel hours
+                AddHourSubtotalRow(row++, "Subtotal Hours - Travel", displayDates, new[] { "TravelReg", "TravelOT", "TravelPrem" });
                 AddSubtotalRow(row++, "Subtotals - Expenses", displayDates, false);
                 AddDataRow(row++, "Mileage", displayDates, "Mileage");
                 AddDataRow(row++, "Per Diem", displayDates, "PerDiem");
@@ -1003,6 +1027,50 @@ namespace LabourBudgetCalculator
                 AddDataRow(row++, "Car Rental", displayDates, "CarRental");
                 AddDataRow(row++, "Hotel", displayDates, "Hotel");
                 AddTotalsRow(row++, "Totals", displayDates);
+            }
+
+            // Add a subtotal row for hours (labour or travel)
+            private void AddHourSubtotalRow(int gridRow, string labelText, List<DateTime> displayDates, string[] hourTypes)
+            {
+                var rowHeaderLabel = CreateLabel(labelText, true); rowHeaderLabel.Tag = "RowHeader";
+                rowHeaderLabel.TextAlign = ContentAlignment.MiddleLeft;
+                rowHeaderLabel.Padding = new Padding(5, 0, 0, 0);
+                AddControlToGrid(rowHeaderLabel, 0, gridRow);
+                int currentGridColumn = 1;
+                foreach (var displayDate in displayDates)
+                {
+                    if (currentGridColumn + 2 >= _gridPanel.ColumnCount) break;
+                    ResourceDayData dayData = _resource.DailyData.Values.FirstOrDefault(rd => rd != null && rd.Date.Date == displayDate.Date);
+                    int dayKey = -1;
+                    if (dayData != null)
+                    {
+                        var kvp = _resource.DailyData.FirstOrDefault(entry => entry.Value == dayData);
+                        dayKey = kvp.Value != null ? kvp.Key : -1;
+                    }
+                    decimal plannedSubtotal = 0, actualSubtotal = 0, deltaSubtotal = 0;
+                    if (dayData != null)
+                    {
+                        foreach (var t in hourTypes)
+                        {
+                            plannedSubtotal += GetPlannedValue(dayData, t);
+                            actualSubtotal += GetActualValue(dayData, t);
+                        }
+                        deltaSubtotal = actualSubtotal - plannedSubtotal;
+                    }
+                    string baseKey = $"SUB_Hours_{dayKey}";
+                    var pL = CreateLabel(plannedSubtotal.ToString("F1"), true); pL.Tag = "Subtotal";
+                    AddControlToGrid(pL, currentGridColumn, gridRow);
+                    if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_P"] = pL;
+                    var aL = CreateLabel(actualSubtotal.ToString("F1"), true); aL.Tag = "Subtotal";
+                    AddControlToGrid(aL, currentGridColumn + 1, gridRow);
+                    if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_A"] = aL;
+                    var dL = CreateLabel(deltaSubtotal.ToString("F1"), true); dL.Tag = new DeltaTag("Delta", deltaSubtotal);
+                    dL.BackColor = Color.Yellow;
+                    SetDeltaLabelColor(dL, deltaSubtotal);
+                    AddControlToGrid(dL, currentGridColumn + 2, gridRow);
+                    if (dayKey != -1) _subtotalAndTotalLabels[$"{baseKey}_D"] = dL;
+                    currentGridColumn += 3;
+                }
             }
 
             // Add this method to ResourcePanel
