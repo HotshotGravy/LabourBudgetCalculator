@@ -174,9 +174,9 @@ namespace LabourBudgetCalculator
             _exportButton.Click += ExportButton_Click;
             _closeButton = new Button { Text = "Close", Size = new Size(100, 30), Location = new Point(170, 10) };
             _closeButton.Click += CloseButton_Click;
-            _darkModeButton = new Button { Text = "Toggle Dark Mode", Size = new Size(150, 30), Location = new Point(280, 10) };
-            _darkModeButton.Click += (s, e) => ToggleDarkMode();
-            panel.Controls.AddRange(new Control[] { _exportButton, _closeButton, _darkModeButton });
+            // _darkModeButton = new Button { Text = "Toggle Dark Mode", Size = new Size(150, 30), Location = new Point(280, 10) };
+            // _darkModeButton.Click += (s, e) => ToggleDarkMode();
+            panel.Controls.AddRange(new Control[] { _exportButton, _closeButton /*, _darkModeButton */ });
             return panel;
         }
 
@@ -633,32 +633,25 @@ namespace LabourBudgetCalculator
             // Apply styles to all grid cells based on their logical type
             internal void ApplyCellStyles(TableLayoutPanel grid)
             {
+                // Only set yellow background for subtotal/total Delta cells in UpdateSubtotalOrTotalRowLabels_InPlace
                 foreach (Control ctrl in grid.Controls)
                 {
+                    // Skip if this is a subtotal/total Delta cell
+                    if (ctrl is Label label && _subtotalAndTotalLabels.Values.Contains(label) && _subtotalAndTotalLabels.Any(kvp => kvp.Value == label && kvp.Key.EndsWith("_D")))
+                        continue;
                     if (ctrl.Tag is DeltaTag deltaTag && deltaTag.Type == "Delta")
                     {
-                        // Robust check: if this label is a subtotal or total delta (by _subtotalAndTotalLabels key ending with _D)
-                        bool isSubtotalOrTotal = false;
-                        foreach (var kvp in _subtotalAndTotalLabels)
+                        // For non-subtotal/total delta cells
+                        ctrl.BackColor = Color.Transparent;
+                        if (ctrl is Label lbl2)
                         {
-                            if (kvp.Value == ctrl && kvp.Key.EndsWith("_D"))
+                            if (decimal.TryParse(lbl2.Text.Replace("$", "").Replace(",", ""), out decimal val))
                             {
-                                isSubtotalOrTotal = true;
-                                break;
-                            }
-                        }
-                        var (back, _) = GetCellColors("Delta", _parentWindow._isDarkMode, deltaTag.Value);
-                        ctrl.BackColor = isSubtotalOrTotal ? Color.Yellow : back;
-                        // Always set color based on current label value
-                        if (ctrl is Label lbl)
-                        {
-                            if (decimal.TryParse(lbl.Text.Replace("$", "").Replace(",", ""), out decimal val))
-                            {
-                                lbl.ForeColor = val == 0 ? Color.Black : (val > 0 ? Color.Red : Color.Green);
+                                lbl2.ForeColor = val == 0 ? Color.Black : (val > 0 ? Color.Red : Color.Green);
                             }
                             else
                             {
-                                lbl.ForeColor = _parentWindow._isDarkMode ? _parentWindow.darkTextColor : Color.Black;
+                                lbl2.ForeColor = _parentWindow._isDarkMode ? _parentWindow.darkTextColor : Color.Black;
                             }
                         }
                     }
@@ -871,11 +864,7 @@ namespace LabourBudgetCalculator
                 if (_resource == null || _gridPanel == null || _overallDisplayDates == null) return; // Check _overallDisplayDates
 
                 _gridPanel.SuspendLayout();
-                // No need to re-filter _resource.DailyData if _overallDisplayDates is the source of truth for columns.
-
                 int expectedColumnCount = 1 + (_overallDisplayDates.Count * 3);
-
-                // Condition for full rebuild: if column count mismatches, or if essential dictionaries are empty but there are dates to show.
                 if (_gridPanel.ColumnCount != expectedColumnCount ||
                     (!_editableCells.Any() && _overallDisplayDates.Count > 0) ||
                     (!_plannedLabels.Any() && _overallDisplayDates.Count > 0))
@@ -887,6 +876,7 @@ namespace LabourBudgetCalculator
                     UpdateSubtotalOrTotalRowLabels_InPlace(_overallDisplayDates, "Subtotals - Charges", true);
                     UpdateSubtotalOrTotalRowLabels_InPlace(_overallDisplayDates, "Subtotals - Expenses", false);
                     UpdateSubtotalOrTotalRowLabels_InPlace(_overallDisplayDates, "Totals", null); // For the main "Totals" row
+                    UpdateAllRegularDeltaCells();
                 }
                 ApplyCellStyles(_gridPanel); // Always reapply cell styles after grid refresh
                 _gridPanel.ResumeLayout(true);
@@ -925,9 +915,31 @@ namespace LabourBudgetCalculator
                     }
                     dV = aV - pV;
 
-                    if (_subtotalAndTotalLabels.TryGetValue($"{keyPrefix}_P", out Label pL)) pL.Text = pV.ToString("C2");
-                    if (_subtotalAndTotalLabels.TryGetValue($"{keyPrefix}_A", out Label aL)) aL.Text = aV.ToString("C2");
-                    if (_subtotalAndTotalLabels.TryGetValue($"{keyPrefix}_D", out Label dL)) { dL.Text = dV.ToString("C2"); SetDeltaLabelColor(dL, dV); }
+                    if (_subtotalAndTotalLabels.TryGetValue($"{keyPrefix}_P", out Label pL)) { pL.Text = pV.ToString("C2"); pL.BackColor = Color.Yellow; }
+                    if (_subtotalAndTotalLabels.TryGetValue($"{keyPrefix}_A", out Label aL)) { aL.Text = aV.ToString("C2"); aL.BackColor = Color.Yellow; }
+                    if (_subtotalAndTotalLabels.TryGetValue($"{keyPrefix}_D", out Label dL)) { dL.Text = dV.ToString("C2"); dL.BackColor = Color.Yellow; SetDeltaLabelColor(dL, dV); }
+                }
+            }
+
+            // Add this method to update all regular data row Delta cells
+            private void UpdateAllRegularDeltaCells()
+            {
+                foreach (var kvp in _deltaLabels)
+                {
+                    // Skip subtotal/total delta cells (those in _subtotalAndTotalLabels)
+                    if (_subtotalAndTotalLabels.Values.Contains(kvp.Value))
+                        continue;
+                    // Key format: D_{dataType}_{dayKey}
+                    var keyParts = kvp.Key.Split('_');
+                    if (keyParts.Length < 3) continue;
+                    string dataType = keyParts[1];
+                    if (!int.TryParse(keyParts[2], out int dayKey)) continue;
+                    if (!_resource.DailyData.TryGetValue(dayKey, out var dayData) || dayData == null) continue;
+                    decimal planned = GetPlannedValue(dayData, dataType);
+                    decimal actual = GetActualValue(dayData, dataType);
+                    decimal delta = actual - planned;
+                    kvp.Value.Text = IsHoursType(dataType) ? delta.ToString("F1") : delta.ToString("C2");
+                    SetDeltaLabelColor(kvp.Value, delta);
                 }
             }
 
