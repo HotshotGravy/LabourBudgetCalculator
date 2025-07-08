@@ -9,9 +9,12 @@ import AddIcon from '@mui/icons-material/Add';
 import { calculateEstimate } from '../utils/estimatorEngine';
 import { DayEditorDialog } from './DayEditorDialog';
 import { DayType } from '../models/ResourceDayData';
+import { CalculationDayType, DayDetail } from '../models/CalculationResult';
 import dayjs, { Dayjs } from 'dayjs';
 import { DatePicker, LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
 const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const SCHEDULE_DAYS = 14;
@@ -39,7 +42,7 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
   const panelBg = darkMode ? '#2c2f36' : '#fff';
   const panelBorder = darkMode ? '#444' : '#ccc';
   const panelText = darkMode ? '#fff' : '#000';
-  const scheduleActive = darkMode ? '#1976d2' : '#1976d2';
+  const scheduleActive = darkMode ? '#1b3f97' : '#1976d2';
   const scheduleInactive = darkMode ? '#222' : '#222';
   const scheduleActiveText = '#fff';
   const scheduleInactiveText = darkMode ? '#aaa' : '#aaa';
@@ -93,7 +96,16 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
   // Change field in editor
   const handleEditField = (field: keyof RateSheet, value: any) => {
     if (!editingSheet) return;
-    setEditingSheet({ ...editingSheet, [field]: value });
+    let updated = { ...editingSheet, [field]: value };
+    if (field === 'regularLabourRate') {
+      updated.overtimeLabourRate = value * 1.5;
+      updated.premiumLabourRate = value * 2;
+    }
+    if (field === 'regularTravelRate') {
+      updated.overtimeTravelRate = value * 1.5;
+      updated.premiumTravelRate = value * 2;
+    }
+    setEditingSheet(updated);
   };
 
   // New states for the estimator
@@ -203,7 +215,7 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
   };
 
   // Define colors for different day types
-  const travelDayBg = darkMode ? '#826e1e' : '#ffe066';
+  const travelDayBg = darkMode ? '#afa436' : '#ffe066';
   const holdoverDayBg = darkMode ? '#2e7d32' : '#4caf50';
 
   // Debug: log dayOfWeek for each scheduled day
@@ -267,6 +279,12 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
     setMileageRate(rateSheets[0]?.mileageRate ?? 0);
     setPerDiemRate(rateSheets[0]?.perDiemRate ?? 0);
     setManualOverrides(new Map());
+    setProjectNumber('');
+    setCustomer('');
+    setProjectDescription('');
+    setTechnician('');
+    setStartDate(null);
+    setEndDate(null);
     setResetAllDialogOpen(false);
   };
 
@@ -298,6 +316,12 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
   // Add new state for startDate and endDate
   const [startDate, setStartDate] = useState<Dayjs | null>(null);
   const [endDate, setEndDate] = useState<Dayjs | null>(null);
+
+  // Add state for project info fields
+  const [projectNumber, setProjectNumber] = useState('');
+  const [customer, setCustomer] = useState('');
+  const [projectDescription, setProjectDescription] = useState('');
+  const [technician, setTechnician] = useState('');
 
   // --- Date logic ---
   useEffect(() => {
@@ -355,6 +379,292 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
     setStartDay('Monday'); // or your default
   };
   const handleClearEndDate = () => setEndDate(null);
+
+  // --- EXCEL EXPORT ---
+  const handleExportToExcel = async () => {
+    // Build the summary sheet row by row, matching the user's requirements
+    const summaryRows = [];
+    // 1. Header
+    summaryRows.push(['Time and Expense Estimate', '', '']); // 1
+    // 2-5: Project info
+    summaryRows.push(['Customer:', customer, '']); // 2
+    summaryRows.push(['Description:', projectDescription, '']); // 3
+    summaryRows.push(['Project Number:', projectNumber, '']); // 4
+    summaryRows.push(['Technician:', technician, '']); // 5
+    // 6: merged, empty, very light gray
+    summaryRows.push(['', '', '']); // 6
+    // 7-9: Date info
+    summaryRows.push(['Start Date On Site:', startDate ? startDate.format('YYYY-MM-DD') : '', '']); // 7
+    summaryRows.push(['End Site Date:', endDate ? endDate.format('YYYY-MM-DD') : '', '']); // 8
+    summaryRows.push(['Total Days On Site:', daysOnSite.toString(), '']); // 9
+    // 10-11: merged, empty, very light gray
+    summaryRows.push(['', '', '']); // 10
+    summaryRows.push(['', '', '']); // 11
+    // 12-15: Rates/options (label in A, value in B)
+    summaryRows.push(['Rates:', currentSheet?.name || '', '']); // 12
+    summaryRows.push(['Separate Travel Days:', (separateTravelTo && separateTravelFrom) ? 'Yes - To and From' : separateTravelTo ? 'Yes - To' : separateTravelFrom ? 'Yes - From' : 'No', '']); // 13
+    summaryRows.push(['Travel Method to Site Area:', travelMethod, '']); // 14
+    summaryRows.push(['Emergency Rates:', isEmergency ? 'Yes' : 'No', '']); // 15
+    // 16-17: merged, empty, very light gray
+    summaryRows.push(['', '', '']); // 16
+    summaryRows.push(['', '', '']); // 17
+    // 18: Summary table header
+    summaryRows.push(['', 'Hours', 'Cost']); // 18
+    // 19-21: Summary table
+    summaryRows.push(['Labour:', calcResult.totalLabourHours.toString(), calcResult.totalLabourCost.toLocaleString(undefined, { style: 'currency', currency: 'USD' })]); // 19
+    summaryRows.push(['Travel:', calcResult.totalTravelHours.toString(), calcResult.totalTravelCost.toLocaleString(undefined, { style: 'currency', currency: 'USD' })]); // 20
+    summaryRows.push(['Expenses:', 'N/A', calcResult.totalExpenses.toLocaleString(undefined, { style: 'currency', currency: 'USD' })]); // 21
+    // 22: merged, empty, very light gray
+    summaryRows.push(['', '', '']); // 22
+    // 23: Grand total
+    summaryRows.push(['Grand Total:', (calcResult.totalLabourHours + calcResult.totalTravelHours).toString(), calcResult.grandTotal.toLocaleString(undefined, { style: 'currency', currency: 'USD' })]); // 23
+
+    // Create workbook and worksheet
+    const workbook = new ExcelJS.Workbook();
+    const ws = workbook.addWorksheet('Summary');
+    ws.views = [{ showGridLines: false }];
+    ws.columns = [ { width: 28 }, { width: 22 }, { width: 18 } ];
+    for (const row of summaryRows) ws.addRow(row);
+
+    // Merges
+    ws.mergeCells('A1:C1'); // header
+    ws.mergeCells('A6:C6');
+    // Merge A10:C11 and A16:C17 for spacers (removes border between these rows)
+    ws.mergeCells('A10:C11');
+    ws.mergeCells('A16:C17');
+    ws.mergeCells('A22:C22');
+    // Merge B and C for rows 2 to 15 (except ignored rows)
+    for (let r = 2; r <= 15; r++) {
+      if (![6, 10, 11, 16, 17, 22].includes(r)) {
+        ws.mergeCells(`B${r}:C${r}`);
+      }
+    }
+
+    // Header row
+    ws.getCell('A1').font = { bold: true, size: 18 };
+    ws.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+    ws.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+    ws.getRow(1).height = 28;
+
+    // Project info (2-5): A right, B/C left
+    for (let r = 2; r <= 5; r++) {
+      ws.getCell(`A${r}`).font = { size: 12 };
+      ws.getCell(`A${r}`).alignment = { horizontal: 'right', vertical: 'middle' };
+      ws.getCell(`B${r}`).font = { bold: true, size: 12 };
+      ws.getCell(`B${r}`).alignment = { horizontal: 'left', vertical: 'middle' };
+    }
+    // Row 6 merged, empty, very light gray
+    ws.getCell('A6').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
+    // Date info (7-9): A right, B/C left
+    for (let r = 7; r <= 9; r++) {
+      ws.getCell(`A${r}`).font = { size: 12 };
+      ws.getCell(`A${r}`).alignment = { horizontal: 'right', vertical: 'middle' };
+      ws.getCell(`B${r}`).font = { bold: true, size: 12 };
+      ws.getCell(`B${r}`).alignment = { horizontal: 'left', vertical: 'middle' };
+    }
+    // Rows 10-11 merged, empty, very light gray
+    ws.getCell('A10').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
+    ws.getCell('A16').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
+    // Rates/options (12-15): label in A, value in B/C left
+    for (let r = 12; r <= 15; r++) {
+      ws.getCell(`A${r}`).font = { size: 12 };
+      ws.getCell(`A${r}`).alignment = { horizontal: 'right', vertical: 'middle' };
+      ws.getCell(`B${r}`).font = { bold: true, size: 12 };
+      ws.getCell(`B${r}`).alignment = { horizontal: 'left', vertical: 'middle' };
+    }
+    // Rows 18: summary table header
+    ws.getCell('B18').font = { bold: true, size: 12 };
+    ws.getCell('C18').font = { bold: true, size: 12 };
+    ws.getCell('B18').alignment = { horizontal: 'center', vertical: 'middle' };
+    ws.getCell('C18').alignment = { horizontal: 'center', vertical: 'middle' };
+    ws.getCell('B18').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFFFEF' } };
+    ws.getCell('C18').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFFFEF' } };
+    ws.getRow(18).height = 22;
+    // Rows 19-21: summary table
+    for (let r = 19; r <= 21; r++) {
+      ws.getCell(`A${r}`).font = { size: 12 };
+      ws.getCell(`A${r}`).alignment = { horizontal: 'right', vertical: 'middle' };
+      ws.getCell(`B${r}`).font = { size: 12 };
+      ws.getCell(`B${r}`).alignment = { horizontal: 'center', vertical: 'middle' };
+      ws.getCell(`C${r}`).font = { size: 12 };
+      ws.getCell(`C${r}`).alignment = { horizontal: 'center', vertical: 'middle' };
+    }
+    // Row 22 merged, empty, very light gray
+    ws.getCell('A22').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
+    // Row 23: Grand total
+    ws.getCell('A23').font = { bold: true, size: 12 };
+    ws.getCell('A23').alignment = { horizontal: 'right', vertical: 'middle' };
+    ws.getCell('B23').font = { size: 12 };
+    ws.getCell('B23').alignment = { horizontal: 'center', vertical: 'middle' };
+    ws.getCell('C23').font = { bold: true, size: 12 };
+    ws.getCell('C23').alignment = { horizontal: 'center', vertical: 'middle' };
+    ws.getCell('C23').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+    ws.getRow(23).height = 22;
+
+    // Borders for all cells in the used range
+    for (let r = 1; r <= 23; r++) {
+      for (let c = 1; c <= 3; c++) {
+        // Remove borders for merged spacer rows (A10:C11 and A16:C17)
+        if ((r === 10 || r === 11 || r === 16 || r === 17) && c >= 1 && c <= 3) continue;
+        ws.getCell(r, c).border = {
+          top: { style: 'medium' },
+          left: { style: 'medium' },
+          bottom: { style: 'medium' },
+          right: { style: 'medium' }
+        };
+      }
+    }
+    // Add right border to C10 and C16 for merged spacers
+    ws.getCell('C10').border = { right: { style: 'medium' } };
+    ws.getCell('C16').border = { right: { style: 'medium' } };
+
+    // --- DETAILED BREAKDOWN SHEET ---
+    const wsDetail = workbook.addWorksheet('Daily Breakdown');
+    wsDetail.views = [{ showGridLines: false }];
+    wsDetail.columns = [
+      { header: '', width: 13 }, // Date
+      { header: '', width: 12 }, // Day
+      { header: '', width: 12 }, // Type
+      { header: '', width: 8 }, // RegLab
+      { header: '', width: 8 }, // OT Lab
+      { header: '', width: 8 }, // PremLab
+      { header: '', width: 8 }, // TotLab
+      { header: '', width: 8 }, // RegTrav
+      { header: '', width: 8 }, // OT Trav
+      { header: '', width: 8 }, // PremTrav
+      { header: '', width: 8 }, // TotTrav
+      { header: '', width: 13 }, // Labour Cost
+      { header: '', width: 13 }, // Travel Cost
+      { header: '', width: 13 }, // Hotel Cost
+      { header: '', width: 13 }, // Per Diem
+      { header: '', width: 13 }, // Mileage Cost
+      { header: '', width: 13 }, // Rental Car Cost
+      { header: '', width: 13 }, // Airfare Cost
+      { header: '', width: 15 }  // Total Day Cost
+    ];
+    // Title row
+    wsDetail.mergeCells(1, 1, 1, 19);
+    wsDetail.getCell('A1').value = 'Daily Breakdown';
+    wsDetail.getCell('A1').font = { bold: true, size: 16 };
+    wsDetail.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+    wsDetail.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+    wsDetail.getRow(1).height = 26;
+    // Multi-level header rows
+    // First header row: group headers
+    wsDetail.mergeCells('A2:C2'); wsDetail.getCell('A2').value = '';
+    wsDetail.mergeCells('D2:G2'); wsDetail.getCell('D2').value = 'Labour';
+    wsDetail.mergeCells('H2:K2'); wsDetail.getCell('H2').value = 'Travel';
+    wsDetail.getCell('L2').value = 'Labour Cost';
+    wsDetail.getCell('M2').value = 'Travel Cost';
+    wsDetail.getCell('N2').value = 'Hotel Cost';
+    wsDetail.getCell('O2').value = 'Per Diem';
+    wsDetail.getCell('P2').value = 'Mileage Cost';
+    wsDetail.getCell('Q2').value = 'Rental Car Cost';
+    wsDetail.getCell('R2').value = 'Airfare Cost';
+    wsDetail.getCell('S2').value = 'Total Day Cost';
+    // Second header row: subheaders
+    const subHeaders = [
+      '', '', '',
+      'Reg.', 'OT', 'Prem.', 'Total',
+      'Reg.', 'OT', 'Prem.', 'Total',
+      '', '', '', '', '', '', '', ''
+    ];
+    const headerRow2 = wsDetail.getRow(3);
+    headerRow2.values = [
+      'Date', 'Day', 'Type',
+      'Reg.', 'OT', 'Prem.', 'Total',
+      'Reg.', 'OT', 'Prem.', 'Total',
+      'Labour Cost', 'Travel Cost', 'Hotel Cost', 'Per Diem', 'Mileage Cost', 'Rental Car Cost', 'Airfare Cost', 'Total Day Cost'
+    ];
+    // Style both header rows
+    for (let c = 1; c <= 19; c++) {
+      wsDetail.getCell(2, c).font = { bold: true, size: 12 };
+      wsDetail.getCell(2, c).alignment = { horizontal: 'center', vertical: 'middle' };
+      wsDetail.getCell(2, c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFFFEF' } };
+      wsDetail.getCell(3, c).font = { bold: true, size: 12 };
+      wsDetail.getCell(3, c).alignment = { horizontal: 'center', vertical: 'middle' };
+      wsDetail.getCell(3, c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFFFEF' } };
+    }
+    wsDetail.getRow(2).height = 22;
+    wsDetail.getRow(3).height = 22;
+    // Data rows
+    const dayRows = calcResult.dayDetails.map(day => [
+      startDate ? dayjs(startDate).add(day.dayNumber - 1, 'day').format('YYYY-MM-DD') : '',
+      daysOfWeek[day.dayOfWeek],
+      friendlyType(day, manualOverrides),
+      day.regularLabourHours,
+      day.overtimeLabourHours,
+      day.premiumLabourHours,
+      day.totalLabourHours,
+      day.regularTravelHours,
+      day.overtimeTravelHours,
+      day.premiumTravelHours,
+      day.totalTravelHours,
+      day.labourCost,
+      day.travelCost,
+      day.hotelCost,
+      day.perDiem,
+      day.mileageCost,
+      day.rentalCarCost,
+      day.airfareCost,
+      day.totalDayCost
+    ]);
+    wsDetail.addRows(dayRows);
+    // Format data rows
+    for (let r = 4; r < 4 + dayRows.length; r++) {
+      const row = wsDetail.getRow(r);
+      // Alternating fill
+      if (r % 2 === 1) {
+        row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8F8F8' } };
+      }
+      // Align text/number columns
+      for (let c = 1; c <= 19; c++) {
+        let cell = row.getCell(c);
+        if ([1,2,3].includes(c)) cell.alignment = { horizontal: 'left', vertical: 'middle' };
+        else cell.alignment = { horizontal: 'right', vertical: 'middle' };
+        // Currency formatting for cost columns
+        if ([12,13,14,15,16,17,18,19].includes(c)) cell.numFmt = '$#,##0.00';
+        // Highlight cost columns
+        if ([12,13,14,15,16,17,18,19].includes(c)) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFCC' } };
+      }
+    }
+    // Borders for all cells
+    for (let r = 1; r <= 3 + dayRows.length; r++) {
+      for (let c = 1; c <= 19; c++) {
+        wsDetail.getCell(r, c).border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        };
+      }
+    }
+    // Autosize columns
+    for (let c = 1; c <= 19; c++) {
+      wsDetail.getColumn(c).width = undefined;
+      wsDetail.getColumn(c).eachCell({ includeEmpty: true }, cell => {
+        const text = cell.value ? cell.value.toString() : '';
+        wsDetail.getColumn(c).width = Math.max(wsDetail.getColumn(c).width || 10, text.length + 2);
+      });
+    }
+
+    // Save file
+    const buf = await workbook.xlsx.writeBuffer();
+    saveAs(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `LabourBudgetCalculator_${projectNumber || 'Estimate'}.xlsx`);
+  };
+
+  // Helper to get friendly type label
+  const friendlyType = (day: DayDetail, manualOverrides: Map<number, { dayType: string }>) => {
+    const override = manualOverrides.get(day.dayNumber);
+    if (override && override.dayType === 'Holdover') return 'Holdover';
+    switch (day.type) {
+      case 'WorkDay': return 'Work Day';
+      case 'TravelTo': return 'Travel To';
+      case 'TravelFrom': return 'Travel From';
+      case 'None': return 'None';
+      default: return day.type;
+    }
+  };
 
   return (
     <Box p={1} sx={{ background: darkMode ? '#23262b' : '#fff', minHeight: '100vh', color: panelText, boxSizing: 'border-box' }}>
@@ -497,7 +807,9 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
                 <Button size="small" variant="outlined" onClick={() => setManualOverrides(new Map())} disabled={manualOverrides.size === 0}>Reset All Overrides</Button>
               </Grid>
               <Grid item>
-                <Button size="small" variant="outlined">Export to Excel</Button>
+                <Button size="small" variant="outlined" onClick={handleExportToExcel}>
+                  Export to Excel
+                </Button>
               </Grid>
               <Grid item xs={12}>
                 <Button
@@ -560,9 +872,10 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
                   <Box border={1} borderRadius={1} p={1} sx={{ height: '100%', background: panelBg, borderColor: panelBorder, color: panelText }}>
                     <Typography variant="subtitle1" sx={{ mb: 0.5, color: panelText }}>Project Info</Typography>
                     <Grid container spacing={0.5} alignItems="center">
-                      <Grid item xs={6}><TextField size="small" label="Project Number" fullWidth /></Grid>
-                      <Grid item xs={6}><TextField size="small" label="Customer" fullWidth /></Grid>
-                      <Grid item xs={12}><TextField size="small" label="Technician" fullWidth /></Grid>
+                      <Grid item xs={6}><TextField size="small" label="Project Number" fullWidth value={projectNumber} onChange={e => setProjectNumber(e.target.value)} /></Grid>
+                      <Grid item xs={6}><TextField size="small" label="Customer" fullWidth value={customer} onChange={e => setCustomer(e.target.value)} /></Grid>
+                      <Grid item xs={6}><TextField size="small" label="Project Description" fullWidth value={projectDescription} onChange={e => setProjectDescription(e.target.value)} /></Grid>
+                      <Grid item xs={6}><TextField size="small" label="Technician" fullWidth value={technician} onChange={e => setTechnician(e.target.value)} /></Grid>
                       <LocalizationProvider dateAdapter={AdapterDayjs}>
                         <Grid item xs={6}>
                           <DatePicker
@@ -608,7 +921,7 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
                       ))}
                       {/* Month label at top right */}
                       {startDate && (
-                        <Typography variant="caption" sx={{ position: 'absolute', top: 2, right: 8, fontSize: '0.75rem', color: scheduleInactiveText }}>
+                        <Typography variant="subtitle2" sx={{ position: 'absolute', top: -32, right: 8, fontSize: '1.1rem', color: scheduleInactiveText, fontWeight: 600 }}>
                           {startDate.format('MMMM')}
                         </Typography>
                       )}
@@ -669,11 +982,11 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
                                     )}
                                     {day ? (
                                       <>
-                                        <Typography variant="caption">Day {day.dayNumber}</Typography>
+                                        <Typography variant="caption" sx={{ textAlign: 'left', width: '100%', pl: 0.5 }}>Day {day.dayNumber}</Typography>
                                         {/* Only show labour/travel if not a No Activity day */}
                                         {!(manualOverrides.has(day.dayNumber) && manualOverrides.get(day.dayNumber)?.dayType === DayType.Nil) && <>
-                                          <Typography variant="caption">Labour: {day.totalLabourHours?.toFixed(1) ?? '0.0'} hrs.</Typography>
-                                          <Typography variant="caption">Travel: {day.totalTravelHours?.toFixed(1) ?? '0.0'} hrs.</Typography>
+                                          <Typography sx={{ mt: 0.5, textAlign: 'left', width: '100%', pl: 0.5, fontSize: '0.7rem' }}>Labour: {day.totalLabourHours?.toFixed(1) ?? '0.0'} hrs.</Typography>
+                                          <Typography sx={{ mt: 0.2, textAlign: 'left', width: '100%', pl: 0.5, fontSize: '0.7rem' }}>Travel: {day.totalTravelHours?.toFixed(1) ?? '0.0'} hrs.</Typography>
                                         </>}
                                         {manualOverrides.has(day.dayNumber) && manualOverrides.get(day.dayNumber)?.dayType !== DayType.Nil && (
                                           <Box
@@ -742,11 +1055,10 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
                     </TableContainer>
                   </Box>
                   {/* Total Days and Note */}
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, position: 'relative' }}>
                     <Typography variant="h6" sx={{ fontWeight: 700, mr: 2 }}>Total Days: <span style={{ fontSize: '2rem', fontWeight: 700 }}>{calcResult.dayDetails.filter(d => d.type !== 'None').length}</span></Typography>
-                    <Box sx={{ flex: 1, textAlign: 'center' }}>
-                      <Typography variant="caption" sx={{ color: panelText }}>(Cost + 10%, not incl. per Diem)</Typography>
-                    </Box>
+                    <Box sx={{ flex: 1 }} />
+                    <Typography variant="caption" sx={{ position: 'absolute', top: -10, right: 0, color: panelText }}>(Cost + 10%, not incl. per Diem)</Typography>
                   </Box>
                   {/* Grand Total at the bottom */}
                   <Box sx={{ mt: 1, border: `1px solid ${panelBorder}`, borderRadius: 1, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', bgcolor: darkMode ? '#222' : '#222' }}>
@@ -779,14 +1091,14 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
                       {calcResult.dayDetails.map((day, i) => (
                         <TableRow key={i}>
                           <TableCell>Day {day.dayNumber}</TableCell>
-                          <TableCell>${(day.labourCost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                          <TableCell>${(day.travelCost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                          <TableCell>${(day.mileageCost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                          <TableCell>${(day.hotelCost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                          <TableCell>${(day.rentalCarCost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                          <TableCell>${(day.airfareCost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                          <TableCell>${(day.perDiem ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                          <TableCell>${(day.totalDayCost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                          <TableCell sx={{ color: (day.labourCost ?? 0) === 0 ? '#888' : 'inherit' }}>${(day.labourCost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                          <TableCell sx={{ color: (day.travelCost ?? 0) === 0 ? '#888' : 'inherit' }}>${(day.travelCost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                          <TableCell sx={{ color: (day.mileageCost ?? 0) === 0 ? '#888' : 'inherit' }}>${(day.mileageCost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                          <TableCell sx={{ color: (day.hotelCost ?? 0) === 0 ? '#888' : 'inherit' }}>${(day.hotelCost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                          <TableCell sx={{ color: (day.rentalCarCost ?? 0) === 0 ? '#888' : 'inherit' }}>${(day.rentalCarCost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                          <TableCell sx={{ color: (day.airfareCost ?? 0) === 0 ? '#888' : 'inherit' }}>${(day.airfareCost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                          <TableCell sx={{ color: (day.perDiem ?? 0) === 0 ? '#888' : 'inherit' }}>${(day.perDiem ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                          <TableCell sx={{ color: (day.totalDayCost ?? 0) === 0 ? '#888' : 'inherit' }}>${(day.totalDayCost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -834,19 +1146,19 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
                     <TextField label="Regular Labour Rate" type="number" value={editingSheet?.regularLabourRate || ''} onChange={e => handleEditField('regularLabourRate', parseFloat(e.target.value))} fullWidth InputProps={{ inputProps: { step: 0.01 } }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
                   </Grid>
                   <Grid item xs={4}>
-                    <TextField label="Overtime Labour Rate" type="number" value={editingSheet ? (editingSheet.regularLabourRate * 1.5).toFixed(2) : ''} fullWidth InputProps={{ readOnly: true }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
+                    <TextField label="Overtime Labour Rate" type="number" value={editingSheet?.overtimeLabourRate || ''} fullWidth InputProps={{ readOnly: true }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
                   </Grid>
                   <Grid item xs={4}>
-                    <TextField label="Premium Labour Rate" type="number" value={editingSheet ? (editingSheet.regularLabourRate * 2).toFixed(2) : ''} fullWidth InputProps={{ readOnly: true }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
+                    <TextField label="Premium Labour Rate" type="number" value={editingSheet?.premiumLabourRate || ''} fullWidth InputProps={{ readOnly: true }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
                   </Grid>
                   <Grid item xs={4}>
                     <TextField label="Regular Travel Rate" type="number" value={editingSheet?.regularTravelRate || ''} onChange={e => handleEditField('regularTravelRate', parseFloat(e.target.value))} fullWidth InputProps={{ inputProps: { step: 0.01 } }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
                   </Grid>
                   <Grid item xs={4}>
-                    <TextField label="Overtime Travel Rate" type="number" value={editingSheet ? (editingSheet.regularTravelRate * 1.5).toFixed(2) : ''} fullWidth InputProps={{ readOnly: true }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
+                    <TextField label="Overtime Travel Rate" type="number" value={editingSheet?.overtimeTravelRate || ''} fullWidth InputProps={{ readOnly: true }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
                   </Grid>
                   <Grid item xs={4}>
-                    <TextField label="Premium Travel Rate" type="number" value={editingSheet ? (editingSheet.regularTravelRate * 2).toFixed(2) : ''} fullWidth InputProps={{ readOnly: true }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
+                    <TextField label="Premium Travel Rate" type="number" value={editingSheet?.premiumTravelRate || ''} fullWidth InputProps={{ readOnly: true }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
                   </Grid>
                   <Grid item xs={4}><TextField label="Hotel Cost" type="number" value={editingSheet?.hotelCost || ''} onChange={e => handleEditField('hotelCost', parseFloat(e.target.value))} fullWidth InputProps={{ inputProps: { step: 0.01 } }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} /></Grid>
                   <Grid item xs={4}><TextField label="Per Diem Rate" type="number" value={editingSheet?.perDiemRate || ''} onChange={e => handleEditField('perDiemRate', parseFloat(e.target.value))} fullWidth InputProps={{ inputProps: { step: 0.01 } }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} /></Grid>

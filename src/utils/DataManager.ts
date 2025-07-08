@@ -21,8 +21,7 @@ export class DataManager {
       const data = localStorage.getItem(`${this.STORAGE_KEY}-${this.RATE_SHEETS_KEY}`);
       if (data) {
         const parsed = JSON.parse(data);
-        rateSheets = parsed.map((sheet: any) => new RateSheetClass(sheet.name));
-        Object.assign(rateSheets, parsed);
+        rateSheets = parsed.map((sheet: any) => Object.assign(new RateSheetClass(sheet.name), sheet));
       }
     } catch (error) {
       console.error('Error loading rate sheets:', error);
