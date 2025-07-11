@@ -9,7 +9,7 @@ import AddIcon from '@mui/icons-material/Add';
 import { calculateEstimate } from '../utils/estimatorEngine';
 import { DayEditorDialog } from './DayEditorDialog';
 import { DayType } from '../models/ResourceDayData';
-import { CalculationDayType, DayDetail } from '../models/CalculationResult';
+import { CalculationDayType, DayDetail, CalculationResult } from '../models/CalculationResult';
 import dayjs, { Dayjs } from 'dayjs';
 import { DatePicker, LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -143,6 +143,10 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
   const [mileageRate, setMileageRate] = useState(currentSheet?.mileageRate ?? 0);
   const [perDiemRate, setPerDiemRate] = useState(currentSheet?.perDiemRate ?? 0);
 
+  // Add state for including Saturdays and Sundays
+  const [includeSaturdays, setIncludeSaturdays] = useState(true);
+  const [includeSundays, setIncludeSundays] = useState(true);
+
   // When selectedSheet or currentSheet changes, update these values
   useEffect(() => {
     setHotelCost(currentSheet?.hotelCost ?? 0);
@@ -183,6 +187,35 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
     manualOverrides
   });
 
+  // Update the schedule creation logic to set excluded days as No Activity
+  const filteredDayDetails = calcResult.dayDetails.map(day => {
+    const isSaturday = daysOfWeek[day.dayOfWeek] === 'Saturday';
+    const isSunday = daysOfWeek[day.dayOfWeek] === 'Sunday';
+    if ((!includeSaturdays && isSaturday) || (!includeSundays && isSunday)) {
+      return {
+        ...day,
+        type: CalculationDayType.None as CalculationDayType,
+        totalLabourHours: 0,
+        totalTravelHours: 0,
+        regularLabourHours: 0,
+        overtimeLabourHours: 0,
+        premiumLabourHours: 0,
+        regularTravelHours: 0,
+        overtimeTravelHours: 0,
+        premiumTravelHours: 0,
+        labourCost: 0,
+        travelCost: 0,
+        hotelCost: 0,
+        perDiem: 0,
+        mileageCost: 0,
+        rentalCarCost: 0,
+        airfareCost: 0,
+        totalDayCost: 0
+      };
+    }
+    return day;
+  });
+
   // Helper function to get discounted rate
   const getDiscountedRate = (base: number, premium: number) => {
     let rate = isEmergency ? premium : base;
@@ -191,7 +224,7 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
   };
 
   // Day editor handlers
-  const handleDayClick = (day: typeof calcResult.dayDetails[number]) => {
+  const handleDayClick = (day: typeof filteredDayDetails[number]) => {
     setEditingDay(day.dayNumber);
     setDayEditorOpen(true);
   };
@@ -208,7 +241,7 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
     }
   };
 
-  const getDefaultDayType = (day: typeof calcResult.dayDetails[number]): DayType => {
+  const getDefaultDayType = (day: typeof filteredDayDetails[number]): DayType => {
     if (day.type === 'TravelTo' || day.type === 'TravelFrom') return DayType.Travel;
     if (day.type === 'None') return DayType.Nil;
     return DayType.Work; // Default for WorkDay
@@ -219,35 +252,24 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
   const holdoverDayBg = darkMode ? '#2e7d32' : '#4caf50';
 
   // Debug: log dayOfWeek for each scheduled day
-  console.log('Scheduled days:', calcResult.dayDetails.map(d => ({ dayNumber: d.dayNumber, dayOfWeek: d.dayOfWeek, label: daysOfWeek[d.dayOfWeek] })));
+  console.log('Scheduled days:', filteredDayDetails.map(d => ({ dayNumber: d.dayNumber, dayOfWeek: d.dayOfWeek, label: daysOfWeek[d.dayOfWeek] })));
 
   // Build a true calendar grid: anchor the first scheduled day to its correct weekday column
-  const calendarWeeks: (typeof calcResult.dayDetails[number] | null)[][] = [];
-  if (calcResult.dayDetails.length > 0) {
-    let days = [...calcResult.dayDetails];
+  const calendarWeeks = [];
+  if (filteredDayDetails.length > 0) {
+    let days = [...filteredDayDetails];
     let firstDayOfWeek = days[0].dayOfWeek;
-    let week: (typeof calcResult.dayDetails[number] | null)[] = Array(7).fill(null);
+    let week = Array(7).fill(null);
     let dayIdx = 0;
-    // Fill blanks before the first scheduled day
-    for (let i = 0; i < firstDayOfWeek; i++) {
-      week[i] = null;
-    }
-    // Fill the rest of the week and subsequent weeks
-    for (let i = firstDayOfWeek; i < 7 && dayIdx < days.length; i++) {
-      week[i] = days[dayIdx++];
-    }
+    for (let i = 0; i < firstDayOfWeek; i++) week[i] = null;
+    for (let i = firstDayOfWeek; i < 7 && dayIdx < days.length; i++) week[i] = days[dayIdx++];
     calendarWeeks.push(week);
-    // Fill subsequent weeks
     while (dayIdx < days.length) {
-      let week: (typeof calcResult.dayDetails[number] | null)[] = Array(7).fill(null);
-      for (let i = 0; i < 7 && dayIdx < days.length; i++) {
-        week[i] = days[dayIdx++];
-      }
+      let week = Array(7).fill(null);
+      for (let i = 0; i < 7 && dayIdx < days.length; i++) week[i] = days[dayIdx++];
       calendarWeeks.push(week);
     }
   }
-  // Debug: log the calendarWeeks structure
-  console.log('Calendar weeks:', calendarWeeks);
   const weeksToShow = Math.max(calendarWeeks.length, 1);
 
   // State for Reset All confirmation dialog
@@ -285,6 +307,8 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
     setTechnician('');
     setStartDate(null);
     setEndDate(null);
+    setIncludeSaturdays(true);
+    setIncludeSundays(true);
     setResetAllDialogOpen(false);
   };
 
@@ -396,7 +420,7 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
     // 7-9: Date info
     summaryRows.push(['Start Date On Site:', startDate ? startDate.format('YYYY-MM-DD') : '', '']); // 7
     summaryRows.push(['End Site Date:', endDate ? endDate.format('YYYY-MM-DD') : '', '']); // 8
-    summaryRows.push(['Total Days On Site:', daysOnSite.toString(), '']); // 9
+    summaryRows.push(['Total Days On Site:', totalDays.toString(), '']); // 9
     // 10-11: merged, empty, very light gray
     summaryRows.push(['', '', '']); // 10
     summaryRows.push(['', '', '']); // 11
@@ -411,13 +435,13 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
     // 18: Summary table header
     summaryRows.push(['', 'Hours', 'Cost']); // 18
     // 19-21: Summary table
-    summaryRows.push(['Labour:', calcResult.totalLabourHours.toString(), calcResult.totalLabourCost.toLocaleString(undefined, { style: 'currency', currency: 'USD' })]); // 19
-    summaryRows.push(['Travel:', calcResult.totalTravelHours.toString(), calcResult.totalTravelCost.toLocaleString(undefined, { style: 'currency', currency: 'USD' })]); // 20
-    summaryRows.push(['Expenses:', 'N/A', calcResult.totalExpenses.toLocaleString(undefined, { style: 'currency', currency: 'USD' })]); // 21
+    summaryRows.push(['Labour:', totalLabourHours.toString(), totalLabourCost.toLocaleString(undefined, { style: 'currency', currency: 'USD' })]); // 19
+    summaryRows.push(['Travel:', totalTravelHours.toString(), totalTravelCost.toLocaleString(undefined, { style: 'currency', currency: 'USD' })]); // 20
+    summaryRows.push(['Expenses:', 'N/A', totalExpenses.toLocaleString(undefined, { style: 'currency', currency: 'USD' })]); // 21
     // 22: merged, empty, very light gray
     summaryRows.push(['', '', '']); // 22
     // 23: Grand total
-    summaryRows.push(['Grand Total:', (calcResult.totalLabourHours + calcResult.totalTravelHours).toString(), calcResult.grandTotal.toLocaleString(undefined, { style: 'currency', currency: 'USD' })]); // 23
+    summaryRows.push(['Grand Total:', (totalLabourHours + totalTravelHours).toString(), grandTotal.toLocaleString(undefined, { style: 'currency', currency: 'USD' })]); // 23
 
     // Create workbook and worksheet
     const workbook = new ExcelJS.Workbook();
@@ -554,27 +578,24 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
     wsDetail.mergeCells('A2:C2'); wsDetail.getCell('A2').value = '';
     wsDetail.mergeCells('D2:G2'); wsDetail.getCell('D2').value = 'Labour';
     wsDetail.mergeCells('H2:K2'); wsDetail.getCell('H2').value = 'Travel';
-    wsDetail.getCell('L2').value = 'Labour Cost';
-    wsDetail.getCell('M2').value = 'Travel Cost';
-    wsDetail.getCell('N2').value = 'Hotel Cost';
-    wsDetail.getCell('O2').value = 'Per Diem';
-    wsDetail.getCell('P2').value = 'Mileage Cost';
-    wsDetail.getCell('Q2').value = 'Rental Car Cost';
-    wsDetail.getCell('R2').value = 'Airfare Cost';
-    wsDetail.getCell('S2').value = 'Total Day Cost';
+    wsDetail.mergeCells('L2:R2'); wsDetail.getCell('L2').value = 'Expenses';
+    wsDetail.getCell('L2').alignment = { horizontal: 'center', vertical: 'middle' };
+    wsDetail.mergeCells('S2:S3'); wsDetail.getCell('S2').value = 'Total Day Cost';
+    wsDetail.getCell('S2').alignment = { horizontal: 'center', vertical: 'middle' };
+    wsDetail.getCell('S2').font = { bold: true, size: 12 };
     // Second header row: subheaders
     const subHeaders = [
       '', '', '',
       'Reg.', 'OT', 'Prem.', 'Total',
       'Reg.', 'OT', 'Prem.', 'Total',
-      '', '', '', '', '', '', '', ''
+      'Labour Cost', 'Travel Cost', 'Hotel Cost', 'Per Diem', 'Mileage Cost', 'Rental Car Cost', 'Airfare Cost', ''
     ];
     const headerRow2 = wsDetail.getRow(3);
     headerRow2.values = [
       'Date', 'Day', 'Type',
       'Reg.', 'OT', 'Prem.', 'Total',
       'Reg.', 'OT', 'Prem.', 'Total',
-      'Labour Cost', 'Travel Cost', 'Hotel Cost', 'Per Diem', 'Mileage Cost', 'Rental Car Cost', 'Airfare Cost', 'Total Day Cost'
+      'Labour Cost', 'Travel Cost', 'Hotel Cost', 'Per Diem', 'Mileage Cost', 'Rental Car Cost', 'Airfare Cost', ''
     ];
     // Style both header rows
     for (let c = 1; c <= 19; c++) {
@@ -588,7 +609,7 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
     wsDetail.getRow(2).height = 22;
     wsDetail.getRow(3).height = 22;
     // Data rows
-    const dayRows = calcResult.dayDetails.map(day => [
+    const dayRows = filteredDayDetails.map(day => [
       startDate ? dayjs(startDate).add(day.dayNumber - 1, 'day').format('YYYY-MM-DD') : '',
       daysOfWeek[day.dayOfWeek],
       friendlyType(day, manualOverrides),
@@ -610,6 +631,32 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
       day.totalDayCost
     ]);
     wsDetail.addRows(dayRows);
+    // Totals row
+    const totalsRow = [
+      'TOTAL', '', '',
+      ...[3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].map(idx => {
+        // Sum each numeric column (skip text columns)
+        if (idx >= 3) {
+          let sum = 0;
+          for (let r = 0; r < dayRows.length; r++) {
+            const val = dayRows[r][idx];
+            if (typeof val === 'number') sum += val;
+          }
+          return sum;
+        }
+        return '';
+      })
+    ];
+    wsDetail.addRow(totalsRow);
+    const totalsRowIdx = 4 + dayRows.length;
+    for (let c = 4; c <= 19; c++) {
+      wsDetail.getCell(totalsRowIdx, c).font = { bold: true, color: { argb: 'FF000000' } };
+      wsDetail.getCell(totalsRowIdx, c).numFmt = c >= 12 ? '$#,##0.00' : '0.00';
+      wsDetail.getCell(totalsRowIdx, c).alignment = { horizontal: 'right', vertical: 'middle' };
+      wsDetail.getCell(totalsRowIdx, c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFFFEF' } };
+    }
+    wsDetail.getCell(totalsRowIdx, 1).font = { bold: true };
+    wsDetail.getRow(totalsRowIdx).height = 22;
     // Format data rows
     for (let r = 4; r < 4 + dayRows.length; r++) {
       const row = wsDetail.getRow(r);
@@ -626,10 +673,15 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
         if ([12,13,14,15,16,17,18,19].includes(c)) cell.numFmt = '$#,##0.00';
         // Highlight cost columns
         if ([12,13,14,15,16,17,18,19].includes(c)) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFCC' } };
+        // Zero value cells in light grey
+        const v = cell.value;
+        if (v === 0 || v === '0' || v === 0.0 || v === '0.00' || v === '$0.00') {
+          cell.font = { ...cell.font, color: { argb: 'FFB0B0B0' } };
+        }
       }
     }
     // Borders for all cells
-    for (let r = 1; r <= 3 + dayRows.length; r++) {
+    for (let r = 1; r <= 3 + dayRows.length + 1; r++) {
       for (let c = 1; c <= 19; c++) {
         wsDetail.getCell(r, c).border = {
           top: { style: 'thin' },
@@ -647,7 +699,6 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
         wsDetail.getColumn(c).width = Math.max(wsDetail.getColumn(c).width || 10, text.length + 2);
       });
     }
-
     // Save file
     const buf = await workbook.xlsx.writeBuffer();
     saveAs(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `LabourBudgetCalculator_${projectNumber || 'Estimate'}.xlsx`);
@@ -665,6 +716,17 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
       default: return day.type;
     }
   };
+
+  
+
+  // Calculations for summary and totals using filteredDayDetails
+  const totalLabourHours = filteredDayDetails.reduce((sum, d) => sum + (d.totalLabourHours ?? 0), 0);
+  const totalTravelHours = filteredDayDetails.reduce((sum, d) => sum + (d.totalTravelHours ?? 0), 0);
+  const totalLabourCost = filteredDayDetails.reduce((sum, d) => sum + (d.labourCost ?? 0), 0);
+  const totalTravelCost = filteredDayDetails.reduce((sum, d) => sum + (d.travelCost ?? 0), 0);
+  const totalExpenses = filteredDayDetails.reduce((sum, d) => sum + ((d.hotelCost ?? 0) + (d.rentalCarCost ?? 0) + (d.airfareCost ?? 0)) * 1.1 + (d.mileageCost ?? 0) + (d.perDiem ?? 0), 0);
+  const grandTotal = filteredDayDetails.reduce((sum, d) => sum + (d.totalDayCost ?? 0), 0);
+  const totalDays = filteredDayDetails.filter(d => d.type !== CalculationDayType.None).length;
 
   return (
     <Box p={1} sx={{ background: darkMode ? '#23262b' : '#fff', minHeight: '100vh', color: panelText, boxSizing: 'border-box' }}>
@@ -848,7 +910,7 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
                     <Typography variant="subtitle1" sx={{ mb: 0.5, color: panelText }}>Days Configuration</Typography>
                     <Grid container spacing={0.5} alignItems="center">
                       <Grid item xs={6}>
-                        <TextField size="small" label="Days on Site" type="number" fullWidth value={daysOnSite} onChange={handleDaysOnSiteChange} inputProps={{ min: 0 }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
+                        <TextField size="small" label="Total Days" type="number" fullWidth value={daysOnSite} onChange={handleDaysOnSiteChange} inputProps={{ min: 0 }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
                       </Grid>
                       <Grid item xs={6}>
                         <TextField size="small" label="Hours per Day" type="number" fullWidth value={hoursPerDay} onChange={e => setHoursPerDay(Math.max(0, Number(e.target.value)))} inputProps={{ min: 0 }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
@@ -864,6 +926,16 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
                         >
                           {daysOfWeek.map(day => <MenuItem key={day} value={day}>{day}</MenuItem>)}
                         </Select>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <FormControlLabel
+                          control={<Checkbox size="small" checked={includeSaturdays} onChange={e => setIncludeSaturdays(e.target.checked)} />}
+                          label={<Typography variant="caption">Include Saturdays</Typography>}
+                        />
+                        <FormControlLabel
+                          control={<Checkbox size="small" checked={includeSundays} onChange={e => setIncludeSundays(e.target.checked)} />}
+                          label={<Typography variant="caption">Include Sundays</Typography>}
+                        />
                       </Grid>
                     </Grid>
                   </Box>
@@ -951,14 +1023,14 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
                                       justifyContent: 'center',
                                       bgcolor: isBlank
                                         ? scheduleInactive
-                                        : (manualOverrides.has(day.dayNumber) && manualOverrides.get(day.dayNumber)?.dayType === DayType.Nil
-                                            ? '#23262b' // dark gray for No Activity
+                                        : (day.type === CalculationDayType.None
+                                            ? '#23262b' // gray for No Activity
                                             : (day.type === 'TravelTo' || day.type === 'TravelFrom' ? travelDayBg :
                                               manualOverrides.has(day.dayNumber) && manualOverrides.get(day.dayNumber)?.dayType === DayType.Holdover ? holdoverDayBg :
                                               scheduleActive)),
                                       color: isBlank
                                         ? scheduleInactiveText
-                                        : (manualOverrides.has(day.dayNumber) && manualOverrides.get(day.dayNumber)?.dayType === DayType.Nil
+                                        : (day.type === CalculationDayType.None
                                             ? '#fff'
                                             : (day.type === 'TravelTo' || day.type === 'TravelFrom' ? '#fff' : scheduleActiveText)),
                                       borderRight: (dayIdx !== 6) ? `1px solid ${panelBorder}` : 0,
@@ -1030,25 +1102,14 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
                         </TableHead>
                         <TableBody>
                           <TableRow>
-                            <TableCell align="center">{calcResult.totalLabourHours} hrs.</TableCell>
-                            <TableCell align="center">{calcResult.totalTravelHours} hrs.</TableCell>
+                            <TableCell align="center">{totalLabourHours} hrs.</TableCell>
+                            <TableCell align="center">{totalTravelHours} hrs.</TableCell>
                             <TableCell align="center">–</TableCell>
                           </TableRow>
                           <TableRow>
-                            <TableCell align="center">${calcResult.totalLabourCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                            <TableCell align="center">${calcResult.totalTravelCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                            <TableCell align="center">${(() => {
-                              // Calculate Expenses as per WinForms logic by summing per-day fields
-                              const hotel = calcResult.dayDetails.reduce((sum, d) => sum + (d.hotelCost ?? 0), 0);
-                              const rental = calcResult.dayDetails.reduce((sum, d) => sum + (d.rentalCarCost ?? 0), 0);
-                              const flight = calcResult.dayDetails.reduce((sum, d) => sum + (d.airfareCost ?? 0), 0);
-                              const mileage = calcResult.dayDetails.reduce((sum, d) => sum + (d.mileageCost ?? 0), 0);
-                              const perDiem = calcResult.dayDetails.reduce((sum, d) => sum + (d.perDiem ?? 0), 0);
-                              const other = 0; // Add if you have other expenses
-                              const expensesWithMarkup = (hotel + rental + flight) * 1.1;
-                              const totalExpenses = expensesWithMarkup + mileage + perDiem + other;
-                              return totalExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                            })()}</TableCell>
+                            <TableCell align="center">${totalLabourCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                            <TableCell align="center">${totalTravelCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                            <TableCell align="center">${totalExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                           </TableRow>
                         </TableBody>
                       </Table>
@@ -1056,14 +1117,14 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
                   </Box>
                   {/* Total Days and Note */}
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, position: 'relative' }}>
-                    <Typography variant="h6" sx={{ fontWeight: 700, mr: 2 }}>Total Days: <span style={{ fontSize: '2rem', fontWeight: 700 }}>{calcResult.dayDetails.filter(d => d.type !== 'None').length}</span></Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 700, mr: 2 }}>Total Days: <span style={{ fontSize: '2rem', fontWeight: 700 }}>{totalDays}</span></Typography>
                     <Box sx={{ flex: 1 }} />
                     <Typography variant="caption" sx={{ position: 'absolute', top: -10, right: 0, color: panelText }}>(Cost + 10%, not incl. per Diem)</Typography>
                   </Box>
                   {/* Grand Total at the bottom */}
                   <Box sx={{ mt: 1, border: `1px solid ${panelBorder}`, borderRadius: 1, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', bgcolor: darkMode ? '#222' : '#222' }}>
                     <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600 }}>Grand total</Typography>
-                    <Typography variant="h4" sx={{ color: darkMode ? '#4fc3f7' : '#00bfff', fontWeight: 700 }}>${calcResult.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Typography>
+                    <Typography variant="h4" sx={{ color: darkMode ? '#4fc3f7' : '#00bfff', fontWeight: 700 }}>${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Typography>
                   </Box>
                 </Box>
               </Box>
@@ -1088,7 +1149,7 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {calcResult.dayDetails.map((day, i) => (
+                      {filteredDayDetails.map((day, i) => (
                         <TableRow key={i}>
                           <TableCell>Day {day.dayNumber}</TableCell>
                           <TableCell sx={{ color: (day.labourCost ?? 0) === 0 ? '#888' : 'inherit' }}>${(day.labourCost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
@@ -1189,9 +1250,9 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
           onSave={handleDaySave}
           dayNumber={editingDay}
           currentOverride={manualOverrides.get(editingDay) || null}
-          defaultDayType={getDefaultDayType(calcResult.dayDetails.find(d => d.dayNumber === editingDay)!)}
-          defaultLabourHours={calcResult.dayDetails.find(d => d.dayNumber === editingDay)?.totalLabourHours || 0}
-          defaultTravelHours={calcResult.dayDetails.find(d => d.dayNumber === editingDay)?.totalTravelHours || 0}
+          defaultDayType={getDefaultDayType(filteredDayDetails.find(d => d.dayNumber === editingDay)!)}
+          defaultLabourHours={filteredDayDetails.find(d => d.dayNumber === editingDay)?.totalLabourHours || 0}
+          defaultTravelHours={filteredDayDetails.find(d => d.dayNumber === editingDay)?.totalTravelHours || 0}
         />
       )}
     </Box>

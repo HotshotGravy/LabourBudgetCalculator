@@ -54,6 +54,8 @@
     ]
   },
   "devDependencies": {
-    "@types/file-saver": "^2.0.7"
+    "@types/file-saver": "^2.0.7",
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12"
   }
 }

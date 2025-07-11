@@ -1,0 +1,165 @@
+# How to Package Your React App for Local Distribution
+
+## Option 1: Electron App (Recommended for Desktop Apps)
+
+Convert your React app into a desktop application using Electron. This creates a standalone .exe (Windows), .dmg (Mac), or .AppImage (Linux) file.
+
+### Step 1: Add Electron to your project
+npm install --save-dev electron electron-builder
+
+### Step 2: Create main.js in your project root
+const { app, BrowserWindow } = require('electron')
+const path = require('path')
+
+function createWindow () {
+  const win = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    }
+  })
+
+  // Load the app
+  win.loadFile('build/index.html')
+  
+  // Uncomment the next line if you want to open DevTools by default
+  // win.webContents.openDevTools()
+}
+
+app.whenReady().then(() => {
+  createWindow()
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow()
+    }
+  })
+})
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit()
+  }
+})
+
+### Step 3: Update package.json
+Add these scripts to your package.json:
+{
+  "scripts": {
+    "electron": "electron .",
+    "electron-pack": "npm run build && electron-builder",
+    "dist": "npm run build && electron-builder --publish=never"
+  },
+  "main": "main.js",
+  "build": {
+    "appId": "com.yourname.labourbudgetcalculator",
+    "productName": "Labour Budget Calculator",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "build/**/*",
+      "main.js"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}
+
+### Step 4: Build the executable
+npm run dist
+
+This creates executables in the dist/ folder that you can share with your friend.
+
+---
+
+## Option 2: Portable Web Server Package
+
+Create a self-contained package that includes a web server.
+
+### Step 1: Install serve globally on your machine
+npm install -g serve
+
+### Step 2: Build your app
+npm run build
+
+### Step 3: Create a startup script
+
+For Windows (start-app.bat):
+@echo off
+echo Starting Labour Budget Calculator...
+echo.
+echo The app will open in your browser at: http://localhost:5000
+echo.
+echo To stop the app, close this window or press Ctrl+C
+echo.
+serve -s build -l 5000
+pause
+
+For Mac/Linux (start-app.sh):
+#!/bin/bash
+echo "Starting Labour Budget Calculator..."
+echo ""
+echo "The app will open in your browser at: http://localhost:5000"
+echo ""
+echo "To stop the app, close this window or press Ctrl+C"
+echo ""
+npx serve -s build -l 5000
+
+### Step 4: Create a package for your friend
+1. Create a folder called LabourBudgetCalculator-Portable
+2. Copy the build/ folder into it
+3. Copy the startup script into it
+4. Create a README.txt file with instructions
+5. Zip the folder and share it
+
+README.txt content:
+Labour Budget Calculator - Portable Version
+
+Instructions:
+1. Extract this folder to your computer
+2. Double-click "start-app.bat" (Windows) or "start-app.sh" (Mac/Linux)
+3. Your browser will open automatically to http://localhost:5000
+4. To stop the app, close the command window
+
+Requirements:
+- Node.js installed on your computer
+- A web browser (Chrome, Firefox, Edge, etc.)
+
+If you don't have Node.js installed, download it from: https://nodejs.org/
+
+---
+
+## Option 3: Simple HTML File (Limited)
+
+If your app doesn't use any backend features and only uses browser APIs:
+
+1. Build your app: npm run build
+2. Copy the build/ folder contents
+3. Your friend can open index.html directly in their browser
+
+Note: This only works if your app doesn't use any server-side features or complex routing.
+
+---
+
+## Recommendation
+
+I'd recommend Option 1 (Electron) if you want a professional desktop app experience, or Option 2 (Portable Web Server) if you want something simpler that still works like a web app.
+
+---
+
+## Additional Notes
+
+- Electron apps are larger in size but provide a native desktop experience
+- Portable web server packages are smaller but require Node.js on the target machine
+- Simple HTML only works for very basic apps without complex features
+- Always test your packaged app on a clean machine before sharing
