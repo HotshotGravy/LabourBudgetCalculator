@@ -1,24 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Grid, Typography, TextField, Select, MenuItem, Checkbox, FormControlLabel, Button, InputAdornment, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Dialog, DialogTitle, DialogContent, DialogActions, IconButton } from '@mui/material';
+import { Box, Grid, Typography, TextField, Select, MenuItem, Checkbox, FormControlLabel, Button, InputAdornment, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Dialog, DialogTitle, DialogContent, DialogActions, IconButton, List, ListItem, ListItemText, ListItemSecondaryAction, Tabs, Tab } from '@mui/material';
 import { DataManager } from '../utils/DataManager';
 import { RateSheet, RateSheetClass } from '../models/RateSheet';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import AddIcon from '@mui/icons-material/Add';
+import SaveIcon from '@mui/icons-material/Save';
+import FileCopyIcon from '@mui/icons-material/FileCopy';
+import FolderIcon from '@mui/icons-material/Folder';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import { calculateEstimate } from '../utils/estimatorEngine';
 import { DayEditorDialog } from './DayEditorDialog';
 import { DayType } from '../models/ResourceDayData';
-import { CalculationDayType, DayDetail, CalculationResult } from '../models/CalculationResult';
+import { CalculationDayType, DayDetail } from '../models/CalculationResult';
 import dayjs, { Dayjs } from 'dayjs';
-import { DatePicker, LocalizationProvider } from '@mui/x-date-pickers';
+import { DatePicker, LocalizationProvider, TimePicker } from '@mui/x-date-pickers';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 
 const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const SCHEDULE_DAYS = 14;
-const SCHEDULE_COLS = 7;
 const SCHEDULE_ROWS = 2;
 
 interface QuickEstimatorProps {
@@ -30,13 +30,64 @@ interface ManualDayOverride {
   labourHours: number;
   travelHours: number;
   includeExpenses?: boolean;
+  startTime?: string;
+}
+
+// New interfaces for multiple resources
+interface ResourceData {
+  id: string;
+  name: string;
+  // Form fields
+  daysOnSite: number;
+  hoursPerDay: number;
+  startDay: string;
+  holdoverDayEnabled: boolean;
+  holdoverDayOfWeek: string;
+  separateTravelTo: boolean;
+  separateTravelFrom: boolean;
+  travelMethod: string;
+  travelDistance: number;
+  travelTime: number;
+  dailyTravelDistance: number;
+  dailyTravelTime: number;
+  discountPercent: number;
+  isEmergency: boolean;
+  hotelRequired: boolean;
+  rentalCarRequired: boolean;
+  otherExpenses: number;
+  hotelCost: number;
+  rentalCarRate: number;
+  flightCost: number;
+  mileageRate: number;
+  perDiemRate: number;
+  includeSaturdays: boolean;
+  includeSundays: boolean;
+  technician: string;
+  startDate: string | null;
+  endDate: string | null;
+  selectedSheet: string;
+  manualOverrides: Map<number, ManualDayOverride>;
+  otBefore7After5: boolean;
+}
+
+interface ProjectData {
+  projectNumber: string;
+  customer: string;
+  projectDescription: string;
+}
+
+interface SavedEstimate {
+  id: string;
+  name: string;
+  timestamp: number;
+  projectData: ProjectData;
+  resources: ResourceData[];
 }
 
 const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
   // Calculate schedule box size based on available height (responsive)
   // For now, use fixed height for the schedule area for WinForms-like look
   const scheduleBoxSize = 99.225; // 90 * 1.05 * 1.05
-  const scheduleHeight = scheduleBoxSize * SCHEDULE_ROWS + 16; // 16px for grid spacing
 
   // Colors for dark mode
   const panelBg = darkMode ? '#2c2f36' : '#fff';
@@ -146,6 +197,11 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
   // Add state for including Saturdays and Sundays
   const [includeSaturdays, setIncludeSaturdays] = useState(true);
   const [includeSundays, setIncludeSundays] = useState(true);
+  // Add state for OT before 7am and after 5pm
+  const [otBefore7After5, setOtBefore7After5] = useState(false);
+
+  // Add state for start time on site (default 8:00 am)
+  const [startTimeOnSite, setStartTimeOnSite] = useState<Dayjs | null>(dayjs().hour(8).minute(0));
 
   // When selectedSheet or currentSheet changes, update these values
   useEffect(() => {
@@ -156,65 +212,12 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
     setPerDiemRate(currentSheet?.perDiemRate ?? 0);
   }, [currentSheet]);
 
-  // Calculate
-  const customSheet = {
-    ...currentSheet,
-    hotelCost,
-    rentalCarRate,
-    flightCost,
-    mileageRate,
-    perDiemRate
-  };
-  const calcResult = calculateEstimate({
-    daysOnSite,
-    hoursPerDay,
-    startDayOfWeek,
-    holdoverDayEnabled,
-    holdoverDayOfWeek: holdoverDayIdx,
-    separateTravelTo,
-    separateTravelFrom,
-    travelMethod,
-    travelDistance,
-    travelTime,
-    dailyTravelDistance,
-    dailyTravelTime,
-    rateSheet: customSheet,
-    discountPercent,
-    isEmergency,
-    hotelRequired,
-    rentalCarRequired,
-    otherExpenses,
-    manualOverrides
-  });
+
+
+
 
   // Update the schedule creation logic to set excluded days as No Activity
-  const filteredDayDetails = calcResult.dayDetails.map(day => {
-    const isSaturday = daysOfWeek[day.dayOfWeek] === 'Saturday';
-    const isSunday = daysOfWeek[day.dayOfWeek] === 'Sunday';
-    if ((!includeSaturdays && isSaturday) || (!includeSundays && isSunday)) {
-      return {
-        ...day,
-        type: CalculationDayType.None as CalculationDayType,
-        totalLabourHours: 0,
-        totalTravelHours: 0,
-        regularLabourHours: 0,
-        overtimeLabourHours: 0,
-        premiumLabourHours: 0,
-        regularTravelHours: 0,
-        overtimeTravelHours: 0,
-        premiumTravelHours: 0,
-        labourCost: 0,
-        travelCost: 0,
-        hotelCost: 0,
-        perDiem: 0,
-        mileageCost: 0,
-        rentalCarCost: 0,
-        airfareCost: 0,
-        totalDayCost: 0
-      };
-    }
-    return day;
-  });
+  // Travel days should override weekend exclusion settings
 
   // Helper function to get discounted rate
   const getDiscountedRate = (base: number, premium: number) => {
@@ -223,57 +226,57 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
     return discountPercent > 0 ? `${rate.toFixed(2)} → ${discounted.toFixed(2)}` : rate.toFixed(2);
   };
 
-  // Day editor handlers
-  const handleDayClick = (day: typeof filteredDayDetails[number]) => {
-    setEditingDay(day.dayNumber);
-    setDayEditorOpen(true);
-  };
 
-  const handleDaySave = (override: ManualDayOverride | null) => {
-    if (editingDay) {
-      const newOverrides = new Map(manualOverrides);
-      if (override) {
-        newOverrides.set(editingDay, override);
-      } else {
-        newOverrides.delete(editingDay);
-      }
-      setManualOverrides(newOverrides);
-    }
-  };
-
-  const getDefaultDayType = (day: typeof filteredDayDetails[number]): DayType => {
-    if (day.type === 'TravelTo' || day.type === 'TravelFrom') return DayType.Travel;
-    if (day.type === 'None') return DayType.Nil;
-    return DayType.Work; // Default for WorkDay
-  };
 
   // Define colors for different day types
   const travelDayBg = darkMode ? '#afa436' : '#ffe066';
   const holdoverDayBg = darkMode ? '#2e7d32' : '#4caf50';
 
-  // Debug: log dayOfWeek for each scheduled day
-  console.log('Scheduled days:', filteredDayDetails.map(d => ({ dayNumber: d.dayNumber, dayOfWeek: d.dayOfWeek, label: daysOfWeek[d.dayOfWeek] })));
-
-  // Build a true calendar grid: anchor the first scheduled day to its correct weekday column
-  const calendarWeeks = [];
-  if (filteredDayDetails.length > 0) {
-    let days = [...filteredDayDetails];
-    let firstDayOfWeek = days[0].dayOfWeek;
-    let week = Array(7).fill(null);
-    let dayIdx = 0;
-    for (let i = 0; i < firstDayOfWeek; i++) week[i] = null;
-    for (let i = firstDayOfWeek; i < 7 && dayIdx < days.length; i++) week[i] = days[dayIdx++];
-    calendarWeeks.push(week);
-    while (dayIdx < days.length) {
-      let week = Array(7).fill(null);
-      for (let i = 0; i < 7 && dayIdx < days.length; i++) week[i] = days[dayIdx++];
-      calendarWeeks.push(week);
-    }
-  }
-  const weeksToShow = Math.max(calendarWeeks.length, 1);
+  // Calendar grid building logic will be moved after filteredDayDetails calculation
 
   // State for Reset All confirmation dialog
   const [resetAllDialogOpen, setResetAllDialogOpen] = useState(false);
+
+  // Save/Clone functionality state
+  const [savedEstimates, setSavedEstimates] = useState<SavedEstimate[]>([]);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
+  const [savedEstimatesDialogOpen, setSavedEstimatesDialogOpen] = useState(false);
+  const [estimateName, setEstimateName] = useState('');
+  const [editingEstimateId, setEditingEstimateId] = useState<string | null>(null);
+
+  // Load saved estimates on component mount
+  useEffect(() => {
+    const saved = localStorage.getItem('savedEstimates');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Convert manualOverrides back to Map objects for each resource
+        const estimatesWithMaps = parsed.map((est: any) => ({
+          ...est,
+          resources: est.resources ? est.resources.map((resource: any) => ({
+            ...resource,
+            manualOverrides: new Map(Object.entries(resource.manualOverrides || {}))
+          })) : []
+        }));
+        setSavedEstimates(estimatesWithMaps);
+      } catch (error) {
+        console.error('Error loading saved estimates:', error);
+      }
+    }
+  }, []);
+
+  // Save estimates to localStorage whenever they change
+  useEffect(() => {
+    const estimatesToSave = savedEstimates.map(est => ({
+      ...est,
+      resources: est.resources.map(resource => ({
+        ...resource,
+        manualOverrides: Object.fromEntries(resource.manualOverrides)
+      }))
+    }));
+    localStorage.setItem('savedEstimates', JSON.stringify(estimatesToSave));
+  }, [savedEstimates]);
 
   // Handler to reset all fields to default values
   const handleResetAll = () => {
@@ -309,15 +312,67 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
     setEndDate(null);
     setIncludeSaturdays(true);
     setIncludeSundays(true);
+    setOtBefore7After5(false);
     setResetAllDialogOpen(false);
   };
 
-  // Add helper functions for rounding and linking
+  // Helper functions for rounding and linking
   // Helper: round to nearest increment
   function roundToNearest(value: number, increment: number) {
     return Math.round(value / increment) * increment;
   }
 
+  // Helper: generate default estimate name
+  const generateDefaultEstimateName = () => {
+    const customerText = customer.trim() || 'Unknown Customer';
+    const projectText = projectDescription.trim() || 'Support';
+    return `${customerText} ${projectText}`;
+  };
+
+  // Helper: save current estimate state
+  const saveCurrentEstimate = (name: string, isClone: boolean = false) => {
+    const projectData: ProjectData = {
+      projectNumber,
+      customer,
+      projectDescription
+    };
+
+    const newEstimate: SavedEstimate = {
+      id: Date.now().toString(),
+      name,
+      timestamp: Date.now(),
+      projectData,
+      resources: resources.map(resource => ({
+        ...resource,
+        manualOverrides: new Map(resource.manualOverrides)
+      }))
+    };
+
+    setSavedEstimates(prev => [...prev, newEstimate]);
+    return newEstimate;
+  };
+
+  // Helper: load estimate data
+  const loadEstimateData = (estimate: SavedEstimate) => {
+    // Load project data
+    setProjectNumber(estimate.projectData.projectNumber);
+    setCustomer(estimate.projectData.customer);
+    setProjectDescription(estimate.projectData.projectDescription);
+    
+    // Load resources
+    setResources(estimate.resources.map(resource => ({
+      ...resource,
+      manualOverrides: new Map(resource.manualOverrides)
+    })));
+    setCurrentResourceIndex(0);
+  };
+
+  // Helper: delete saved estimate
+  const deleteSavedEstimate = (id: string) => {
+    setSavedEstimates(prev => prev.filter(est => est.id !== id));
+  };
+
+  // Add helper functions for rounding and linking
   // Linked state for daily driving distance/time
   const handleDailyTravelDistanceChange = (val: number) => {
     // Round to nearest 15 miles, min 15
@@ -347,12 +402,225 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
   const [projectDescription, setProjectDescription] = useState('');
   const [technician, setTechnician] = useState('');
 
+  // Multiple resource state
+  const [resources, setResources] = useState<ResourceData[]>(() => [
+    {
+      id: '1',
+      name: 'Technician 1',
+      daysOnSite: 1,
+      hoursPerDay: 8,
+      startDay: 'Monday',
+      holdoverDayEnabled: false,
+      holdoverDayOfWeek: 'Sunday',
+      separateTravelTo: false,
+      separateTravelFrom: false,
+      travelMethod: 'Driving',
+      travelDistance: 0,
+      travelTime: 0,
+      dailyTravelDistance: 0,
+      dailyTravelTime: 0,
+      discountPercent: 0,
+      isEmergency: false,
+      hotelRequired: true,
+      rentalCarRequired: false,
+      otherExpenses: 0,
+      hotelCost: rateSheets[0]?.hotelCost ?? 0,
+      rentalCarRate: rateSheets[0]?.rentalCarRate ?? 0,
+      flightCost: rateSheets[0]?.flightCost ?? 0,
+      mileageRate: rateSheets[0]?.mileageRate ?? 0,
+      perDiemRate: rateSheets[0]?.perDiemRate ?? 0,
+      includeSaturdays: true,
+      includeSundays: true,
+      technician: '',
+      startDate: null,
+      endDate: null,
+      selectedSheet: rateSheets[0]?.name || '',
+      manualOverrides: new Map(),
+      otBefore7After5: false,
+    }
+  ]);
+  
+  const [currentResourceIndex, setCurrentResourceIndex] = useState(0);
+  const [addResourceDialogOpen, setAddResourceDialogOpen] = useState(false);
+  const [newResourceName, setNewResourceName] = useState('');
+  const [copyFromResourceIndex, setCopyFromResourceIndex] = useState(0);
+  const [copyOnlyRateSheet, setCopyOnlyRateSheet] = useState(false);
+
+  // Helper functions for resources
+  const addResource = () => {
+    const newResource: ResourceData = {
+      id: Date.now().toString(),
+      name: newResourceName,
+      daysOnSite: copyOnlyRateSheet ? 1 : resources[copyFromResourceIndex].daysOnSite,
+      hoursPerDay: copyOnlyRateSheet ? 8 : resources[copyFromResourceIndex].hoursPerDay,
+      startDay: copyOnlyRateSheet ? 'Monday' : resources[copyFromResourceIndex].startDay,
+      holdoverDayEnabled: copyOnlyRateSheet ? false : resources[copyFromResourceIndex].holdoverDayEnabled,
+      holdoverDayOfWeek: copyOnlyRateSheet ? 'Sunday' : resources[copyFromResourceIndex].holdoverDayOfWeek,
+      separateTravelTo: copyOnlyRateSheet ? false : resources[copyFromResourceIndex].separateTravelTo,
+      separateTravelFrom: copyOnlyRateSheet ? false : resources[copyFromResourceIndex].separateTravelFrom,
+      travelMethod: copyOnlyRateSheet ? 'Driving' : resources[copyFromResourceIndex].travelMethod,
+      travelDistance: copyOnlyRateSheet ? 0 : resources[copyFromResourceIndex].travelDistance,
+      travelTime: copyOnlyRateSheet ? 0 : resources[copyFromResourceIndex].travelTime,
+      dailyTravelDistance: copyOnlyRateSheet ? 0 : resources[copyFromResourceIndex].dailyTravelDistance,
+      dailyTravelTime: copyOnlyRateSheet ? 0 : resources[copyFromResourceIndex].dailyTravelTime,
+      discountPercent: copyOnlyRateSheet ? 0 : resources[copyFromResourceIndex].discountPercent,
+      isEmergency: copyOnlyRateSheet ? false : resources[copyFromResourceIndex].isEmergency,
+      hotelRequired: copyOnlyRateSheet ? true : resources[copyFromResourceIndex].hotelRequired,
+      rentalCarRequired: copyOnlyRateSheet ? false : resources[copyFromResourceIndex].rentalCarRequired,
+      otherExpenses: copyOnlyRateSheet ? 0 : resources[copyFromResourceIndex].otherExpenses,
+      hotelCost: copyOnlyRateSheet ? (currentSheet?.hotelCost ?? 0) : resources[copyFromResourceIndex].hotelCost,
+      rentalCarRate: copyOnlyRateSheet ? (currentSheet?.rentalCarRate ?? 0) : resources[copyFromResourceIndex].rentalCarRate,
+      flightCost: copyOnlyRateSheet ? (currentSheet?.flightCost ?? 0) : resources[copyFromResourceIndex].flightCost,
+      mileageRate: copyOnlyRateSheet ? (currentSheet?.mileageRate ?? 0) : resources[copyFromResourceIndex].mileageRate,
+      perDiemRate: copyOnlyRateSheet ? (currentSheet?.perDiemRate ?? 0) : resources[copyFromResourceIndex].perDiemRate,
+      includeSaturdays: copyOnlyRateSheet ? true : resources[copyFromResourceIndex].includeSaturdays,
+      includeSundays: copyOnlyRateSheet ? true : resources[copyFromResourceIndex].includeSundays,
+      technician: '',
+      startDate: copyOnlyRateSheet ? null : resources[copyFromResourceIndex].startDate,
+      endDate: copyOnlyRateSheet ? null : resources[copyFromResourceIndex].endDate,
+      selectedSheet: copyOnlyRateSheet ? selectedSheet : resources[copyFromResourceIndex].selectedSheet,
+      manualOverrides: copyOnlyRateSheet ? new Map() : new Map(resources[copyFromResourceIndex].manualOverrides),
+      otBefore7After5: false,
+    };
+    
+    setResources([...resources, newResource]);
+    setCurrentResourceIndex(resources.length);
+    setAddResourceDialogOpen(false);
+    setNewResourceName('');
+  };
+
+  const deleteResource = (index: number) => {
+    if (resources.length <= 1) return;
+    const newResources = resources.filter((_, i) => i !== index);
+    setResources(newResources);
+    if (currentResourceIndex >= index && currentResourceIndex > 0) {
+      setCurrentResourceIndex(currentResourceIndex - 1);
+    } else if (currentResourceIndex >= newResources.length) {
+      setCurrentResourceIndex(newResources.length - 1);
+    }
+  };
+
+  const renameResource = (index: number, newName: string) => {
+    const newResources = [...resources];
+    newResources[index].name = newName;
+    setResources(newResources);
+  };
+
+  // Sync form fields with current resource
+  useEffect(() => {
+    const currentResource = resources[currentResourceIndex];
+    if (currentResource) {
+      setDaysOnSite(currentResource.daysOnSite);
+      setHoursPerDay(currentResource.hoursPerDay);
+      setStartDay(currentResource.startDay);
+      setHoldoverDayEnabled(currentResource.holdoverDayEnabled);
+      setHoldoverDayOfWeek(currentResource.holdoverDayOfWeek);
+      setSeparateTravelTo(currentResource.separateTravelTo);
+      setSeparateTravelFrom(currentResource.separateTravelFrom);
+      setTravelMethod(currentResource.travelMethod);
+      setTravelDistance(currentResource.travelDistance);
+      setTravelTime(currentResource.travelTime);
+      setDailyTravelDistance(currentResource.dailyTravelDistance);
+      setDailyTravelTime(currentResource.dailyTravelTime);
+      setDiscountPercent(currentResource.discountPercent);
+      setIsEmergency(currentResource.isEmergency);
+      setHotelRequired(currentResource.hotelRequired);
+      setRentalCarRequired(currentResource.rentalCarRequired);
+      setOtherExpenses(currentResource.otherExpenses);
+      setHotelCost(currentResource.hotelCost);
+      setRentalCarRate(currentResource.rentalCarRate);
+      setFlightCost(currentResource.flightCost);
+      setMileageRate(currentResource.mileageRate);
+      setPerDiemRate(currentResource.perDiemRate);
+      setIncludeSaturdays(currentResource.includeSaturdays);
+      setIncludeSundays(currentResource.includeSundays);
+      setOtBefore7After5(currentResource.otBefore7After5);
+      setTechnician(currentResource.technician);
+      setStartDate(currentResource.startDate ? dayjs(currentResource.startDate) : null);
+      setEndDate(currentResource.endDate ? dayjs(currentResource.endDate) : null);
+      setSelectedSheet(currentResource.selectedSheet);
+      setManualOverrides(new Map(currentResource.manualOverrides));
+    }
+  }, [currentResourceIndex, resources]);
+
+  // Calculate
+  const currentResource = resources[currentResourceIndex];
+  const customSheet = {
+    ...currentSheet,
+    hotelCost,
+    rentalCarRate,
+    flightCost,
+    mileageRate,
+    perDiemRate
+  };
+  const calcResult = calculateEstimate({
+    daysOnSite,
+    hoursPerDay,
+    startDayOfWeek,
+    holdoverDayEnabled,
+    holdoverDayOfWeek: holdoverDayIdx,
+    separateTravelTo,
+    separateTravelFrom,
+    travelMethod,
+    travelDistance,
+    travelTime,
+    dailyTravelDistance,
+    dailyTravelTime,
+    rateSheet: customSheet,
+    discountPercent,
+    isEmergency,
+    hotelRequired,
+    rentalCarRequired,
+    otherExpenses,
+    manualOverrides,
+    includeSaturdays,
+    includeSundays,
+    otBefore7After5,
+    startTimeOnSite
+  });
+  const filteredDayDetails = calcResult.dayDetails;
+
+  // Debug: log dayOfWeek for each scheduled day
+  console.log('Scheduled days:', filteredDayDetails.map(d => ({ dayNumber: d.dayNumber, dayOfWeek: d.dayOfWeek, label: daysOfWeek[d.dayOfWeek] })));
+
+  // Build a true calendar grid: anchor the first scheduled day to its correct weekday column
+  const calendarWeeks = [];
+  if (filteredDayDetails.length > 0) {
+    let days = [...filteredDayDetails];
+    let firstDayOfWeek = days[0].dayOfWeek;
+    let week = Array(7).fill(null);
+    let dayIdx = 0;
+    for (let i = 0; i < firstDayOfWeek; i++) week[i] = null;
+    for (let i = firstDayOfWeek; i < 7 && dayIdx < days.length; i++) week[i] = days[dayIdx++];
+    calendarWeeks.push(week);
+    while (dayIdx < days.length) {
+      let week = Array(7).fill(null);
+      for (let i = 0; i < 7 && dayIdx < days.length; i++) week[i] = days[dayIdx++];
+      calendarWeeks.push(week);
+    }
+  }
+  const weeksToShow = Math.max(calendarWeeks.length, 1);
+
+  // Functions to update current resource
+  const updateCurrentResource = (updates: Partial<ResourceData>) => {
+    const newResources = [...resources];
+    newResources[currentResourceIndex] = { ...newResources[currentResourceIndex], ...updates };
+    setResources(newResources);
+  };
+
+  const updateCurrentResourceField = (field: keyof ResourceData, value: any) => {
+    updateCurrentResource({ [field]: value });
+  };
+
   // --- Date logic ---
   useEffect(() => {
     // If both dates are set, update daysOnSite
     if (startDate && endDate) {
       const diff = endDate.diff(startDate, 'day') + 1;
-      if (diff > 0 && daysOnSite !== diff) setDaysOnSite(diff);
+      if (diff > 0 && daysOnSite !== diff) {
+        setDaysOnSite(diff);
+        updateCurrentResourceField('daysOnSite', diff);
+      }
     }
   }, [startDate, endDate]);
 
@@ -388,24 +656,76 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
   const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value ? dayjs(e.target.value) : null;
     setStartDate(value);
+    updateCurrentResourceField('startDate', value?.format('YYYY-MM-DD') || null);
     if (!value) setStartDay('Monday'); // or your default
   };
   const handleEndDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value ? dayjs(e.target.value) : null;
     setEndDate(value);
+    updateCurrentResourceField('endDate', value?.format('YYYY-MM-DD') || null);
   };
   const handleDaysOnSiteChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = Math.max(1, Number(e.target.value));
     setDaysOnSite(value);
+    updateCurrentResourceField('daysOnSite', value);
   };
   const handleClearStartDate = () => {
     setStartDate(null);
     setStartDay('Monday'); // or your default
+    updateCurrentResourceField('startDate', null);
   };
-  const handleClearEndDate = () => setEndDate(null);
+  const handleClearEndDate = () => {
+    setEndDate(null);
+    updateCurrentResourceField('endDate', null);
+  };
+
+  // Save/Clone handlers
+  const handleSaveClick = () => {
+    setEstimateName(generateDefaultEstimateName());
+    setEditingEstimateId(null);
+    setSaveDialogOpen(true);
+  };
+
+  const handleCloneClick = () => {
+    const defaultName = generateDefaultEstimateName();
+    setEstimateName(defaultName ? `Copy of ${defaultName}` : 'Copy of Estimate');
+    setEditingEstimateId(null);
+    setCloneDialogOpen(true);
+  };
+
+  const handleSaveConfirm = () => {
+    if (estimateName.trim()) {
+      saveCurrentEstimate(estimateName.trim());
+      setSaveDialogOpen(false);
+      setEstimateName('');
+    }
+  };
+
+  const handleCloneConfirm = () => {
+    if (estimateName.trim()) {
+      saveCurrentEstimate(estimateName.trim(), true);
+      setCloneDialogOpen(false);
+      setEstimateName('');
+    }
+  };
+
+  const handleLoadEstimate = (estimate: SavedEstimate) => {
+    loadEstimateData(estimate);
+    setSavedEstimatesDialogOpen(false);
+  };
 
   // --- EXCEL EXPORT ---
   const handleExportToExcel = async () => {
+    // Prompt for customer if not specified
+    let customerToUse = customer.trim();
+    if (!customerToUse) {
+      const customerPrompt = prompt('Please enter the customer name:');
+      if (!customerPrompt || customerPrompt.trim() === '') {
+        alert('Customer name is required for export.');
+        return;
+      }
+      customerToUse = customerPrompt.trim();
+    }
     // Build the summary sheet row by row, matching the user's requirements
     const summaryRows = [];
     // 1. Header
@@ -420,7 +740,7 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
     // 7-9: Date info
     summaryRows.push(['Start Date On Site:', startDate ? startDate.format('YYYY-MM-DD') : '', '']); // 7
     summaryRows.push(['End Site Date:', endDate ? endDate.format('YYYY-MM-DD') : '', '']); // 8
-    summaryRows.push(['Total Days On Site:', totalDays.toString(), '']); // 9
+    summaryRows.push(['Total Days:', totalDays.toString(), '']); // 9
     // 10-11: merged, empty, very light gray
     summaryRows.push(['', '', '']); // 10
     summaryRows.push(['', '', '']); // 11
@@ -437,7 +757,7 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
     // 19-21: Summary table
     summaryRows.push(['Labour:', totalLabourHours.toString(), totalLabourCost.toLocaleString(undefined, { style: 'currency', currency: 'USD' })]); // 19
     summaryRows.push(['Travel:', totalTravelHours.toString(), totalTravelCost.toLocaleString(undefined, { style: 'currency', currency: 'USD' })]); // 20
-    summaryRows.push(['Expenses:', 'N/A', totalExpenses.toLocaleString(undefined, { style: 'currency', currency: 'USD' })]); // 21
+    summaryRows.push(['Expenses (Cost + 10%, not incl. per diem):', 'N/A', totalExpenses.toLocaleString(undefined, { style: 'currency', currency: 'USD' })]); // 21
     // 22: merged, empty, very light gray
     summaryRows.push(['', '', '']); // 22
     // 23: Grand total
@@ -546,25 +866,25 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
     const wsDetail = workbook.addWorksheet('Daily Breakdown');
     wsDetail.views = [{ showGridLines: false }];
     wsDetail.columns = [
-      { header: '', width: 13 }, // Date
-      { header: '', width: 12 }, // Day
-      { header: '', width: 12 }, // Type
-      { header: '', width: 8 }, // RegLab
-      { header: '', width: 8 }, // OT Lab
-      { header: '', width: 8 }, // PremLab
-      { header: '', width: 8 }, // TotLab
-      { header: '', width: 8 }, // RegTrav
-      { header: '', width: 8 }, // OT Trav
-      { header: '', width: 8 }, // PremTrav
-      { header: '', width: 8 }, // TotTrav
-      { header: '', width: 13 }, // Labour Cost
-      { header: '', width: 13 }, // Travel Cost
-      { header: '', width: 13 }, // Hotel Cost
-      { header: '', width: 13 }, // Per Diem
-      { header: '', width: 13 }, // Mileage Cost
-      { header: '', width: 13 }, // Rental Car Cost
-      { header: '', width: 13 }, // Airfare Cost
-      { header: '', width: 15 }  // Total Day Cost
+      { header: '', width: 14 }, // Date
+      { header: '', width: 14 }, // Day
+      { header: '', width: 14 }, // Type
+      { header: 'Labour', width: 14 }, // RegLab
+      { header: '', width: 14 }, // OT Lab
+      { header: '', width: 14 }, // PremLab
+      { header: '', width: 14 }, // TotLab
+      { header: 'Travel', width: 14 }, // RegTrav
+      { header: '', width: 14 }, // OT Trav
+      { header: '', width: 14 }, // PremTrav
+      { header: '', width: 14 }, // TotTrav
+      { header: 'Labour', width: 14 }, // Labour
+      { header: 'Travel', width: 14 }, // Travel
+      { header: 'Hotel', width: 14 }, // Hotel
+      { header: 'Per Diem', width: 14 }, // Per Diem
+      { header: 'Mileage', width: 14 }, // Mileage
+      { header: 'Rental Car', width: 14 }, // Rental Car
+      { header: 'Airfare', width: 14 }, // Airfare
+      { header: '', width: 20 }  // Total Day Cost (column S)
     ];
     // Title row
     wsDetail.mergeCells(1, 1, 1, 19);
@@ -576,26 +896,25 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
     // Multi-level header rows
     // First header row: group headers
     wsDetail.mergeCells('A2:C2'); wsDetail.getCell('A2').value = '';
-    wsDetail.mergeCells('D2:G2'); wsDetail.getCell('D2').value = 'Labour';
-    wsDetail.mergeCells('H2:K2'); wsDetail.getCell('H2').value = 'Travel';
-    wsDetail.mergeCells('L2:R2'); wsDetail.getCell('L2').value = 'Expenses';
+    wsDetail.mergeCells('D2:G2'); wsDetail.getCell('D2').value = 'Labour Hours';
+    wsDetail.mergeCells('H2:K2'); wsDetail.getCell('H2').value = 'Travel Hours';
+    wsDetail.getCell('L2').value = 'Daily Cost';
+    wsDetail.mergeCells('L2:M2');
     wsDetail.getCell('L2').alignment = { horizontal: 'center', vertical: 'middle' };
-    wsDetail.mergeCells('S2:S3'); wsDetail.getCell('S2').value = 'Total Day Cost';
+    wsDetail.getCell('N2').value = 'Expenses (Cost +10%, not including per diem)';
+    wsDetail.mergeCells('N2:R2');
+    wsDetail.getCell('N2').alignment = { horizontal: 'center', vertical: 'middle' };
+    // --- ENSURE S2:S3 MERGE IS LAST ---
+    wsDetail.mergeCells('S2:S3');
+    wsDetail.getCell('S2').value = 'Total Day Cost';
     wsDetail.getCell('S2').alignment = { horizontal: 'center', vertical: 'middle' };
-    wsDetail.getCell('S2').font = { bold: true, size: 12 };
     // Second header row: subheaders
-    const subHeaders = [
-      '', '', '',
-      'Reg.', 'OT', 'Prem.', 'Total',
-      'Reg.', 'OT', 'Prem.', 'Total',
-      'Labour Cost', 'Travel Cost', 'Hotel Cost', 'Per Diem', 'Mileage Cost', 'Rental Car Cost', 'Airfare Cost', ''
-    ];
     const headerRow2 = wsDetail.getRow(3);
     headerRow2.values = [
       'Date', 'Day', 'Type',
-      'Reg.', 'OT', 'Prem.', 'Total',
-      'Reg.', 'OT', 'Prem.', 'Total',
-      'Labour Cost', 'Travel Cost', 'Hotel Cost', 'Per Diem', 'Mileage Cost', 'Rental Car Cost', 'Airfare Cost', ''
+      'Regular', 'Overtime', 'Premium', 'Total',
+      'Regular', 'Overtime', 'Premium', 'Total',
+      'Labour', 'Travel', 'Hotel', 'Per Diem', 'Mileage', 'Rental Car', 'Airfare', ''
     ];
     // Style both header rows
     for (let c = 1; c <= 19; c++) {
@@ -623,12 +942,13 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
       day.totalTravelHours,
       day.labourCost,
       day.travelCost,
-      day.hotelCost,
-      day.perDiem,
-      day.mileageCost,
-      day.rentalCarCost,
-      day.airfareCost,
-      day.totalDayCost
+      (day.hotelCost ?? 0) * 1.1, // Marked up
+      day.perDiem, // No markup
+      (day.mileageCost ?? 0) * 1.1, // Marked up
+      (day.rentalCarCost ?? 0) * 1.1, // Marked up
+      (day.airfareCost ?? 0) * 1.1, // Marked up
+      // Total day cost: sum of all above (labourCost + travelCost + marked-up expenses + per diem)
+      (day.labourCost ?? 0) + (day.travelCost ?? 0) + ((day.hotelCost ?? 0) * 1.1) + ((day.mileageCost ?? 0) * 1.1) + ((day.rentalCarCost ?? 0) * 1.1) + ((day.airfareCost ?? 0) * 1.1) + (day.perDiem ?? 0)
     ]);
     wsDetail.addRows(dayRows);
     // Totals row
@@ -691,17 +1011,15 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
         };
       }
     }
-    // Autosize columns
-    for (let c = 1; c <= 19; c++) {
-      wsDetail.getColumn(c).width = undefined;
-      wsDetail.getColumn(c).eachCell({ includeEmpty: true }, cell => {
-        const text = cell.value ? cell.value.toString() : '';
-        wsDetail.getColumn(c).width = Math.max(wsDetail.getColumn(c).width || 10, text.length + 2);
-      });
-    }
     // Save file
     const buf = await workbook.xlsx.writeBuffer();
-    saveAs(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `LabourBudgetCalculator_${projectNumber || 'Estimate'}.xlsx`);
+    
+    // Generate filename: "Estimate - [Customer] [Project Description] - [Current Date]"
+    const currentDate = dayjs().format('YYYY-MM-DD');
+    const projectText = projectDescription.trim() || 'Support';
+    const filename = `Estimate - ${customerToUse} ${projectText} - ${currentDate}.xlsx`;
+    
+    saveAs(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), filename);
   };
 
   // Helper to get friendly type label
@@ -724,180 +1042,389 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
   const totalTravelHours = filteredDayDetails.reduce((sum, d) => sum + (d.totalTravelHours ?? 0), 0);
   const totalLabourCost = filteredDayDetails.reduce((sum, d) => sum + (d.labourCost ?? 0), 0);
   const totalTravelCost = filteredDayDetails.reduce((sum, d) => sum + (d.travelCost ?? 0), 0);
-  const totalExpenses = filteredDayDetails.reduce((sum, d) => sum + ((d.hotelCost ?? 0) + (d.rentalCarCost ?? 0) + (d.airfareCost ?? 0)) * 1.1 + (d.mileageCost ?? 0) + (d.perDiem ?? 0), 0);
-  const grandTotal = filteredDayDetails.reduce((sum, d) => sum + (d.totalDayCost ?? 0), 0);
-  const totalDays = filteredDayDetails.filter(d => d.type !== CalculationDayType.None).length;
+  // Apply 10% markup to hotel, mileage, rental car, airfare; per diem is not marked up
+  const totalExpenses = filteredDayDetails.reduce((sum, d) =>
+    sum +
+      ((d.hotelCost ?? 0) * 1.1) +
+      ((d.mileageCost ?? 0) * 1.1) +
+      ((d.rentalCarCost ?? 0) * 1.1) +
+      ((d.airfareCost ?? 0) * 1.1) +
+      (d.perDiem ?? 0),
+    0
+  );
+  const grandTotal = filteredDayDetails.reduce((sum, d) =>
+    sum +
+      (d.labourCost ?? 0) +
+      (d.travelCost ?? 0) +
+      ((d.hotelCost ?? 0) * 1.1) +
+      ((d.mileageCost ?? 0) * 1.1) +
+      ((d.rentalCarCost ?? 0) * 1.1) +
+      ((d.airfareCost ?? 0) * 1.1) +
+      (d.perDiem ?? 0),
+    0
+  );
+  const daysWithLabour = filteredDayDetails.filter(d => d.totalLabourHours > 0).length;
+  const holdoverDays = filteredDayDetails.filter(d => d.isHoldover).length;
+  const totalDaysOnSite = daysWithLabour - holdoverDays;
+  const totalDays = filteredDayDetails.length;
+
+  // Note: Removed the useEffect that was causing feedback loops when updating daysOnSite
+
+  // Day editor handlers
+  const handleDayClick = (day: typeof filteredDayDetails[number]) => {
+    setEditingDay(day.dayNumber);
+    setDayEditorOpen(true);
+  };
+
+  const handleDaySave = (override: ManualDayOverride | null) => {
+    if (editingDay) {
+      const newOverrides = new Map(manualOverrides);
+      if (override) {
+        newOverrides.set(editingDay, override);
+      } else {
+        newOverrides.delete(editingDay);
+      }
+      setManualOverrides(newOverrides);
+      updateCurrentResourceField('manualOverrides', newOverrides);
+    }
+  };
+
+  const getDefaultDayType = (day: typeof filteredDayDetails[number]): DayType => {
+    if (day.type === 'TravelTo' || day.type === 'TravelFrom') return DayType.Travel;
+    if (day.type === 'None') return DayType.Nil;
+    return DayType.Work; // Default for WorkDay
+  };
 
   return (
     <Box p={1} sx={{ background: darkMode ? '#23262b' : '#fff', minHeight: '100vh', color: panelText, boxSizing: 'border-box' }}>
       <Typography variant="h6" sx={{ mb: 0.5, color: panelText }}>Time & Expense Calculator</Typography>
+      
+      {/* Resource Tabs */}
+      <Box sx={{ mb: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+          <Tabs 
+            value={currentResourceIndex} 
+            onChange={(_, newValue) => setCurrentResourceIndex(newValue)}
+            variant="scrollable"
+            scrollButtons="auto"
+            sx={{ 
+              flex: 1,
+              '& .MuiTab-root': {
+                minWidth: 'auto',
+                px: 2,
+                py: 1,
+                fontSize: '0.875rem'
+              }
+            }}
+          >
+            {resources.map((resource, index) => (
+              <Tab 
+                key={resource.id}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="body2">{resource.name}</Typography>
+                    {resources.length > 1 && (
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteResource(index);
+                        }}
+                        disabled={resources.length <= 1}
+                        sx={{ 
+                          p: 0.5, 
+                          ml: 0.5,
+                          '&:hover': { bgcolor: 'error.main', color: 'white' }
+                        }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                  </Box>
+                }
+              />
+            ))}
+          </Tabs>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<PersonAddIcon />}
+            onClick={() => {
+              setNewResourceName(`Technician ${resources.length + 1}`);
+              setCopyFromResourceIndex(currentResourceIndex);
+              setCopyOnlyRateSheet(false);
+              setAddResourceDialogOpen(true);
+            }}
+            sx={{ ml: 1 }}
+          >
+            Add Resource
+          </Button>
+        </Box>
+      </Box>
+      
       <Grid container spacing={1} alignItems="flex-start">
         {/* Left Column: Rates, Travel Options, Expenses */}
         <Grid item xs={4}>
-          <Box border={1} borderRadius={1} p={1} sx={{ mb: 1, background: panelBg, borderColor: panelBorder, color: panelText }}>
-            <Typography variant="subtitle1" sx={{ mb: 0.5, color: panelText }}>Rates</Typography>
-            <Grid container spacing={1.5} alignItems="center">
-              <Grid item xs={12}>
-                <Select
-                  size="small"
-                  fullWidth
-                  value={selectedSheet}
-                  onChange={e => setSelectedSheet(e.target.value)}
-                >
-                  {rateSheets.map(sheet => (
-                    <MenuItem key={sheet.name} value={sheet.name}>{sheet.name}</MenuItem>
-                  ))}
-                </Select>
-              </Grid>
-              <Grid item xs={6}><TextField size="small" label="Discount" type="number" fullWidth value={discountPercent} onChange={e => setDiscountPercent(Math.max(0, Number(e.target.value)))} InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} /></Grid>
-              <Grid item xs={6}><FormControlLabel control={<Checkbox size="small" checked={isEmergency} onChange={e => setIsEmergency(e.target.checked)} />} label={<Typography variant="caption">Emergency</Typography>} /></Grid>
-              <Grid item xs={6}>
-                <Box sx={{ mt: 1 }}>
-                  <Grid container spacing={0.5}>
-                    <Grid item xs={12}>
-                      <Box display="flex" alignItems="center" sx={{ mb: 1 }}>
-                        <span style={{ minWidth: 140 }}>Regular Labour</span>
-                        <span style={{ minWidth: 100 }}>${getDiscountedRate(currentSheet?.regularLabourRate ?? 0, currentSheet?.premiumLabourRate ?? 0)} / hr</span>
-                        <span style={{ minWidth: 60 }}></span>
-                        <span style={{ minWidth: 140 }}>Regular Travel</span>
-                        <span style={{ minWidth: 100 }}>${getDiscountedRate(currentSheet?.regularTravelRate ?? 0, currentSheet?.premiumTravelRate ?? 0)} / hr</span>
-                      </Box>
-                      <Box display="flex" alignItems="center" sx={{ mb: 1 }}>
-                        <span style={{ minWidth: 140 }}>Overtime Labour</span>
-                        <span style={{ minWidth: 100 }}>${getDiscountedRate(currentSheet?.overtimeLabourRate ?? (currentSheet?.regularLabourRate ?? 0) * 1.5, currentSheet?.premiumLabourRate ?? 0)} / hr</span>
-                        <span style={{ minWidth: 60 }}></span>
-                        <span style={{ minWidth: 140 }}>Overtime Travel</span>
-                        <span style={{ minWidth: 100 }}>${getDiscountedRate(currentSheet?.overtimeTravelRate ?? (currentSheet?.regularTravelRate ?? 0) * 1.5, currentSheet?.premiumTravelRate ?? 0)} / hr</span>
-                      </Box>
-                      <Box display="flex" alignItems="center">
-                        <span style={{ minWidth: 140 }}>Premium Labour</span>
-                        <span style={{ minWidth: 100 }}>${getDiscountedRate(currentSheet?.premiumLabourRate ?? (currentSheet?.regularLabourRate ?? 0) * 2, currentSheet?.premiumLabourRate ?? 0)} / hr</span>
-                        <span style={{ minWidth: 60 }}></span>
-                        <span style={{ minWidth: 140 }}>Premium Travel</span>
-                        <span style={{ minWidth: 100 }}>${getDiscountedRate(currentSheet?.premiumTravelRate ?? (currentSheet?.regularTravelRate ?? 0) * 2, currentSheet?.premiumTravelRate ?? 0)} / hr</span>
-                      </Box>
-                    </Grid>
+          <Grid container direction="column" spacing={1}>
+            <Grid item>
+              <Box border={1} borderRadius={1} p={1} sx={{ background: panelBg, borderColor: panelBorder, color: panelText }}>
+                {/* Rates content */}
+                <Typography variant="subtitle1" sx={{ mb: 0.5, color: panelText }}>Rates</Typography>
+                <Grid container spacing={1.5} alignItems="center">
+                  <Grid item xs={12}>
+                    <Select
+                      size="small"
+                      fullWidth
+                      value={selectedSheet}
+                      onChange={e => setSelectedSheet(e.target.value)}
+                    >
+                      {rateSheets.map(sheet => (
+                        <MenuItem key={sheet.name} value={sheet.name}>{sheet.name}</MenuItem>
+                      ))}
+                    </Select>
                   </Grid>
-                </Box>
-              </Grid>
+                  <Grid item xs={6}><TextField size="small" label="Discount" type="number" fullWidth value={discountPercent} onChange={e => {
+                    const value = Math.max(0, Number(e.target.value));
+                    setDiscountPercent(value);
+                    updateCurrentResourceField('discountPercent', value);
+                  }} InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} /></Grid>
+                  <Grid item xs={6}><FormControlLabel control={<Checkbox size="small" checked={isEmergency} onChange={e => {
+                    setIsEmergency(e.target.checked);
+                    updateCurrentResourceField('isEmergency', e.target.checked);
+                  }} />} label={<Typography variant="caption">Emergency</Typography>} /></Grid>
+                  <Grid item xs={6}>
+                    <Box sx={{ mt: 1 }}>
+                      <Grid container spacing={0.5}>
+                        <Grid item xs={12}>
+                          <Box display="flex" alignItems="center" sx={{ mb: 1 }}>
+                            <span style={{ minWidth: 140 }}>Regular Labour</span>
+                            <span style={{ minWidth: 100 }}>${getDiscountedRate(currentSheet?.regularLabourRate ?? 0, currentSheet?.premiumLabourRate ?? 0)} / hr</span>
+                            <span style={{ minWidth: 60 }}></span>
+                            <span style={{ minWidth: 140 }}>Regular Travel</span>
+                            <span style={{ minWidth: 100 }}>${getDiscountedRate(currentSheet?.regularTravelRate ?? 0, currentSheet?.premiumTravelRate ?? 0)} / hr</span>
+                          </Box>
+                          <Box display="flex" alignItems="center" sx={{ mb: 1 }}>
+                            <span style={{ minWidth: 140 }}>Overtime Labour</span>
+                            <span style={{ minWidth: 100 }}>${getDiscountedRate(currentSheet?.overtimeLabourRate ?? (currentSheet?.regularLabourRate ?? 0) * 1.5, currentSheet?.premiumLabourRate ?? 0)} / hr</span>
+                            <span style={{ minWidth: 60 }}></span>
+                            <span style={{ minWidth: 140 }}>Overtime Travel</span>
+                            <span style={{ minWidth: 100 }}>${getDiscountedRate(currentSheet?.overtimeTravelRate ?? (currentSheet?.regularTravelRate ?? 0) * 1.5, currentSheet?.premiumTravelRate ?? 0)} / hr</span>
+                          </Box>
+                          <Box display="flex" alignItems="center">
+                            <span style={{ minWidth: 140 }}>Premium Labour</span>
+                            <span style={{ minWidth: 100 }}>${getDiscountedRate(currentSheet?.premiumLabourRate ?? (currentSheet?.regularLabourRate ?? 0) * 2, currentSheet?.premiumLabourRate ?? 0)} / hr</span>
+                            <span style={{ minWidth: 60 }}></span>
+                            <span style={{ minWidth: 140 }}>Premium Travel</span>
+                            <span style={{ minWidth: 100 }}>${getDiscountedRate(currentSheet?.premiumTravelRate ?? (currentSheet?.regularTravelRate ?? 0) * 2, currentSheet?.premiumTravelRate ?? 0)} / hr</span>
+                          </Box>
+                        </Grid>
+                      </Grid>
+                    </Box>
+                  </Grid>
+                </Grid>
+              </Box>
             </Grid>
-          </Box>
-          <Box border={1} borderRadius={1} p={1} sx={{ mb: 1, background: panelBg, borderColor: panelBorder, color: panelText }}>
-            <Typography variant="subtitle1" sx={{ mb: 1, color: panelText }}>Travel Options</Typography>
-            <Grid container spacing={1.5} alignItems="center">
-              <Grid item xs={6}><FormControlLabel control={<Checkbox size="small" checked={separateTravelTo} onChange={e => setSeparateTravelTo(e.target.checked)} />} label={<Typography variant="caption">Separate Travel Day To</Typography>} /></Grid>
-              <Grid item xs={6}><FormControlLabel control={<Checkbox size="small" checked={separateTravelFrom} onChange={e => setSeparateTravelFrom(e.target.checked)} />} label={<Typography variant="caption">Separate Travel Day From</Typography>} /></Grid>
-              <Grid item xs={12}>
-                <TextField
-                  select
-                  size="small"
-                  fullWidth
-                  label="Travel Method to Site Area"
-                  value={travelMethod}
-                  onChange={e => setTravelMethod(e.target.value)}
-                >
-                  <MenuItem value="Driving">Driving</MenuItem>
-                  <MenuItem value="Flight">Flight</MenuItem>
-                </TextField>
-              </Grid>
-              <Grid item xs={12}>
-                <TextField size="small" label="Driving Distance (First and Last Days Only)" type="number" fullWidth value={travelDistance} onChange={e => setTravelDistance(Math.max(0, Number(e.target.value)))} InputProps={{ endAdornment: <InputAdornment position="end">miles/km</InputAdornment> }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField size="small" label="Total Travel Time to Site Area (Including Flight)" type="number" fullWidth value={travelTime}
-                  onChange={e => setTravelTime(Math.max(0.25, roundToNearest(Number(e.target.value), 0.25)))}
-                  inputProps={{ min: 0.25, step: 0.25 }}
-                  InputProps={{ endAdornment: <InputAdornment position="end">hours</InputAdornment> }}
-                  onBlur={e => setTravelTime(Math.max(0.25, roundToNearest(Number((e.target as HTMLInputElement).value), 0.25)))}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); setTravelTime(Math.max(0.25, roundToNearest(Number((e.target as HTMLInputElement).value), 0.25))); } }}
-                  onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField size="small" label="Daily Driving Distance (One Way)" type="number" fullWidth value={dailyTravelDistance} 
-                  onChange={e => handleDailyTravelDistanceChange(Number(e.target.value))}
-                  inputProps={{ min: 15, step: 15 }}
-                  InputProps={{ endAdornment: <InputAdornment position="end">miles/km</InputAdornment> }}
-                  onBlur={e => handleDailyTravelDistanceChange(Number((e.target as HTMLInputElement).value))}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); handleDailyTravelDistanceChange(Number((e.target as HTMLInputElement).value)); } }}
-                  onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField size="small" label="Daily Travel Time (One Way)" type="number" fullWidth value={dailyTravelTime} 
-                  onChange={e => handleDailyTravelTimeChange(Number(e.target.value))}
-                  inputProps={{ min: 0.25, step: 0.25 }}
-                  InputProps={{ endAdornment: <InputAdornment position="end">hours</InputAdornment> }}
-                  onBlur={e => handleDailyTravelTimeChange(Number((e.target as HTMLInputElement).value))}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); handleDailyTravelTimeChange(Number((e.target as HTMLInputElement).value)); } }}
-                  onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }}
-                />
-              </Grid>
+            <Grid item>
+              <Box border={1} borderRadius={1} p={1} sx={{ background: panelBg, borderColor: panelBorder, color: panelText }}>
+                {/* Travel Options content */}
+                <Typography variant="subtitle1" sx={{ mb: 1, color: panelText }}>Travel Options</Typography>
+                <Grid container spacing={1.5} alignItems="center">
+                  <Grid item xs={6}><FormControlLabel control={<Checkbox size="small" checked={separateTravelTo} onChange={e => {
+                    setSeparateTravelTo(e.target.checked);
+                    updateCurrentResourceField('separateTravelTo', e.target.checked);
+                  }} />} label={<Typography variant="caption">Separate Travel Day To</Typography>} /></Grid>
+                  <Grid item xs={6}><FormControlLabel control={<Checkbox size="small" checked={separateTravelFrom} onChange={e => {
+                    setSeparateTravelFrom(e.target.checked);
+                    updateCurrentResourceField('separateTravelFrom', e.target.checked);
+                  }} />} label={<Typography variant="caption">Separate Travel Day From</Typography>} /></Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      select
+                      size="small"
+                      fullWidth
+                      label="Travel Method to Site Area"
+                      value={travelMethod}
+                      onChange={e => {
+                        setTravelMethod(e.target.value);
+                        updateCurrentResourceField('travelMethod', e.target.value);
+                      }}
+                    >
+                      <MenuItem value="Driving">Driving</MenuItem>
+                      <MenuItem value="Flight">Flight</MenuItem>
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField size="small" label="Driving Distance (First and Last Days Only)" type="number" fullWidth value={travelDistance} onChange={e => {
+                      const value = Math.max(0, Number(e.target.value));
+                      setTravelDistance(value);
+                      updateCurrentResourceField('travelDistance', value);
+                    }} InputProps={{ endAdornment: <InputAdornment position="end">miles/km</InputAdornment> }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField size="small" label="Total Travel Time to Site Area (Including Flight)" type="number" fullWidth value={travelTime}
+                      onChange={e => {
+                        const value = Math.max(0.25, roundToNearest(Number(e.target.value), 0.25));
+                        setTravelTime(value);
+                        updateCurrentResourceField('travelTime', value);
+                      }}
+                      inputProps={{ min: 0.25, step: 0.25 }}
+                      InputProps={{ endAdornment: <InputAdornment position="end">hours</InputAdornment> }}
+                      onBlur={e => {
+                        const value = Math.max(0.25, roundToNearest(Number((e.target as HTMLInputElement).value), 0.25));
+                        setTravelTime(value);
+                        updateCurrentResourceField('travelTime', value);
+                      }}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); 
+                        const value = Math.max(0.25, roundToNearest(Number((e.target as HTMLInputElement).value), 0.25));
+                        setTravelTime(value);
+                        updateCurrentResourceField('travelTime', value);
+                      } }}
+                      onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField size="small" label="Daily Driving Distance (One Way)" type="number" fullWidth value={dailyTravelDistance} 
+                      onChange={e => {
+                        handleDailyTravelDistanceChange(Number(e.target.value));
+                        updateCurrentResourceField('dailyTravelDistance', dailyTravelDistance);
+                      }}
+                      inputProps={{ min: 15, step: 15 }}
+                      InputProps={{ endAdornment: <InputAdornment position="end">miles/km</InputAdornment> }}
+                      onBlur={e => {
+                        handleDailyTravelDistanceChange(Number((e.target as HTMLInputElement).value));
+                        updateCurrentResourceField('dailyTravelDistance', dailyTravelDistance);
+                      }}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); 
+                        handleDailyTravelDistanceChange(Number((e.target as HTMLInputElement).value));
+                        updateCurrentResourceField('dailyTravelDistance', dailyTravelDistance);
+                      } }}
+                      onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField size="small" label="Daily Travel Time (One Way)" type="number" fullWidth value={dailyTravelTime} 
+                      onChange={e => {
+                        handleDailyTravelTimeChange(Number(e.target.value));
+                        updateCurrentResourceField('dailyTravelTime', dailyTravelTime);
+                      }}
+                      inputProps={{ min: 0.25, step: 0.25 }}
+                      InputProps={{ endAdornment: <InputAdornment position="end">hours</InputAdornment> }}
+                      onBlur={e => {
+                        handleDailyTravelTimeChange(Number((e.target as HTMLInputElement).value));
+                        updateCurrentResourceField('dailyTravelTime', dailyTravelTime);
+                      }}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); 
+                        handleDailyTravelTimeChange(Number((e.target as HTMLInputElement).value));
+                        updateCurrentResourceField('dailyTravelTime', dailyTravelTime);
+                      } }}
+                      onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }}
+                    />
+                  </Grid>
+                </Grid>
+              </Box>
             </Grid>
-          </Box>
-          <Box border={1} borderRadius={1} p={1} sx={{ mb: 1, minHeight: 207, background: panelBg, borderColor: panelBorder, color: panelText }}>
-            <Typography variant="subtitle1" sx={{ mb: 1, color: panelText }}>Expenses</Typography>
-            <Grid container spacing={1.5} alignItems="center">
-              <Grid item xs={6} display="flex" alignItems="center">
-                <FormControlLabel control={<Checkbox size="small" checked={hotelRequired} onChange={e => setHotelRequired(e.target.checked)} />} label={<Typography variant="caption">Hotel Required</Typography>} sx={{ mr: 1 }} />
-                <TextField size="small" label="Hotel" type="number" value={hotelCost} onChange={e => setHotelCost(Math.max(0, Number(e.target.value)))} fullWidth disabled={!hotelRequired} InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, endAdornment: <InputAdornment position="end">per night</InputAdornment> }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
-              </Grid>
-              <Grid item xs={6} display="flex" alignItems="center">
-                <FormControlLabel control={<Checkbox size="small" checked={rentalCarRequired} onChange={e => setRentalCarRequired(e.target.checked)} />} label={<Typography variant="caption">Rental Car Required</Typography>} sx={{ mr: 1 }} />
-                <TextField size="small" label="Rental Car" type="number" value={rentalCarRate} onChange={e => setRentalCarRate(Math.max(0, Number(e.target.value)))} fullWidth disabled={!rentalCarRequired} InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, endAdornment: <InputAdornment position="end">per day</InputAdornment> }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
-              </Grid>
-              <Grid item xs={12}><TextField size="small" label="Flight Cost (One Way)" type="number" value={flightCost} onChange={e => setFlightCost(Math.max(0, Number(e.target.value)))} fullWidth InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} /></Grid>
-              <Grid item xs={12}><TextField size="small" label="Mileage" type="number" value={mileageRate} onChange={e => setMileageRate(Math.max(0, Number(e.target.value)))} fullWidth InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, endAdornment: <InputAdornment position="end">per mile/km</InputAdornment> }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} /></Grid>
-              <Grid item xs={12}><TextField size="small" label="Per Diem" type="number" value={perDiemRate} onChange={e => setPerDiemRate(Math.max(0, Number(e.target.value)))} fullWidth InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, endAdornment: <InputAdornment position="end">per day</InputAdornment> }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} /></Grid>
+            <Grid item>
+              <Box border={1} borderRadius={1} p={1} sx={{ minHeight: 207, background: panelBg, borderColor: panelBorder, color: panelText }}>
+                {/* Expenses content */}
+                <Typography variant="subtitle1" sx={{ mb: 1, color: panelText }}>Expenses</Typography>
+                <Grid container spacing={1.5} alignItems="center">
+                  <Grid item xs={6} display="flex" alignItems="center">
+                    <FormControlLabel control={<Checkbox size="small" checked={hotelRequired} onChange={e => {
+                      setHotelRequired(e.target.checked);
+                      updateCurrentResourceField('hotelRequired', e.target.checked);
+                    }} />} label={<Typography variant="caption">Hotel Required</Typography>} sx={{ mr: 1 }} />
+                    <TextField size="small" label="Hotel" type="number" value={hotelCost} onChange={e => {
+                      const value = Math.max(0, Number(e.target.value));
+                      setHotelCost(value);
+                      updateCurrentResourceField('hotelCost', value);
+                    }} fullWidth disabled={!hotelRequired} InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, endAdornment: <InputAdornment position="end">per night</InputAdornment> }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
+                  </Grid>
+                  <Grid item xs={6} display="flex" alignItems="center">
+                    <FormControlLabel control={<Checkbox size="small" checked={rentalCarRequired} onChange={e => {
+                      setRentalCarRequired(e.target.checked);
+                      updateCurrentResourceField('rentalCarRequired', e.target.checked);
+                    }} />} label={<Typography variant="caption">Rental Car Required</Typography>} sx={{ mr: 1 }} />
+                    <TextField size="small" label="Rental Car" type="number" value={rentalCarRate} onChange={e => {
+                      const value = Math.max(0, Number(e.target.value));
+                      setRentalCarRate(value);
+                      updateCurrentResourceField('rentalCarRate', value);
+                    }} fullWidth disabled={!rentalCarRequired} InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, endAdornment: <InputAdornment position="end">per day</InputAdornment> }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
+                  </Grid>
+                  <Grid item xs={12}><TextField size="small" label="Flight Cost (One Way)" type="number" value={flightCost} onChange={e => {
+                    const value = Math.max(0, Number(e.target.value));
+                    setFlightCost(value);
+                    updateCurrentResourceField('flightCost', value);
+                  }} fullWidth InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} /></Grid>
+                  <Grid item xs={12}><TextField size="small" label="Mileage" type="number" value={mileageRate} onChange={e => {
+                    const value = Math.max(0, Number(e.target.value));
+                    setMileageRate(value);
+                    updateCurrentResourceField('mileageRate', value);
+                  }} fullWidth InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, endAdornment: <InputAdornment position="end">per mile/km</InputAdornment> }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} /></Grid>
+                  <Grid item xs={12}><TextField size="small" label="Per Diem" type="number" value={perDiemRate} onChange={e => {
+                    const value = Math.max(0, Number(e.target.value));
+                    setPerDiemRate(value);
+                    updateCurrentResourceField('perDiemRate', value);
+                  }} fullWidth InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, endAdornment: <InputAdornment position="end">per day</InputAdornment> }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} /></Grid>
+                </Grid>
+              </Box>
             </Grid>
-          </Box>
-          <Box border={1} borderRadius={1} p={1} sx={{ mb: 0, background: panelBg, borderColor: panelBorder, color: panelText, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
-            <Grid container spacing={1} alignItems="center" justifyContent="center">
-              <Grid item>
-                <Button size="small" variant="outlined" onClick={() => {
-                  setEditDialogOpen(true);
-                  if (!selectedSheet && rateSheets.length > 0) {
-                    setSelectedSheet(rateSheets[0].name);
-                    setEditingSheet({ ...rateSheets[0] });
-                    setIsNew(false);
-                  }
-                }} startIcon={<EditIcon />}>
-                  Edit Rate Sheets
-                </Button>
-              </Grid>
-              <Grid item>
-                <Button size="small" variant="outlined" onClick={() => setManualOverrides(new Map())} disabled={manualOverrides.size === 0}>Reset All Overrides</Button>
-              </Grid>
-              <Grid item>
-                <Button size="small" variant="outlined" onClick={handleExportToExcel}>
-                  Export to Excel
-                </Button>
-              </Grid>
-              <Grid item xs={12}>
-                <Button
-                  variant="outlined"
-                  color="error"
-                  fullWidth
-                  sx={{ mt: 1 }}
-                  onClick={() => setResetAllDialogOpen(true)}
-                >
-                  Reset All (Restore Defaults)
-                </Button>
-              </Grid>
+            <Grid item>
+              <Box border={1} borderRadius={1} p={1} sx={{ background: panelBg, borderColor: panelBorder, color: panelText, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                <Grid container spacing={1} sx={{ width: '100%' }}>
+                  {/* First row */}
+                  <Grid item xs={4} sx={{ mt: 0.5 }}>
+                    <Button size="small" variant="outlined" onClick={() => {
+                      setEditDialogOpen(true);
+                      if (!selectedSheet && rateSheets.length > 0) {
+                        setSelectedSheet(rateSheets[0].name);
+                        setEditingSheet({ ...rateSheets[0] });
+                        setIsNew(false);
+                      }
+                    }} startIcon={<EditIcon />} fullWidth>
+                      Edit Rate Sheets
+                    </Button>
+                  </Grid>
+                  <Grid item xs={4} sx={{ mt: 0.5 }}>
+                    <Button size="small" variant="outlined" onClick={() => setManualOverrides(new Map())} disabled={manualOverrides.size === 0} fullWidth>
+                      Reset All Overrides
+                    </Button>
+                  </Grid>
+                  <Grid item xs={4} sx={{ mt: 0.5 }}>
+                    <Button size="small" variant="outlined" onClick={handleExportToExcel} fullWidth>
+                      Export to Excel
+                    </Button>
+                  </Grid>
+                  {/* Second row */}
+                  <Grid item xs={4}>
+                    <Button size="small" variant="outlined" onClick={handleSaveClick} startIcon={<SaveIcon />} fullWidth>
+                      Save
+                    </Button>
+                  </Grid>
+                  <Grid item xs={4}>
+                    <Button size="small" variant="outlined" onClick={handleCloneClick} startIcon={<FileCopyIcon />} fullWidth>
+                      Clone
+                    </Button>
+                  </Grid>
+                  <Grid item xs={4}>
+                    <Button size="small" variant="outlined" onClick={() => setSavedEstimatesDialogOpen(true)} startIcon={<FolderIcon />} fullWidth>
+                      Load Saved
+                    </Button>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      fullWidth
+                      sx={{ mt: 1 }}
+                      onClick={() => setResetAllDialogOpen(true)}
+                    >
+                      Reset All (Restore Defaults)
+                    </Button>
+                  </Grid>
+                </Grid>
+              </Box>
             </Grid>
-
-            {/* Reset All Confirmation Dialog */}
-            <Dialog open={resetAllDialogOpen} onClose={() => setResetAllDialogOpen(false)}>
-              <DialogTitle>Reset All Settings</DialogTitle>
-              <DialogContent>
-                <Typography>Are you sure you want to reset all fields to their default values? This cannot be undone.</Typography>
-              </DialogContent>
-              <DialogActions>
-                <Button onClick={() => setResetAllDialogOpen(false)} color="primary" variant="outlined">Cancel</Button>
-                <Button onClick={handleResetAll} color="error" variant="contained">Reset All</Button>
-              </DialogActions>
-            </Dialog>
-          </Box>
+          </Grid>
         </Grid>
         {/* Right Column: Days Config, Project Info, Schedule, Results, Totals */}
         <Grid item xs={8}>
@@ -910,31 +1437,78 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
                     <Typography variant="subtitle1" sx={{ mb: 0.5, color: panelText }}>Days Configuration</Typography>
                     <Grid container spacing={0.5} alignItems="center">
                       <Grid item xs={6}>
-                        <TextField size="small" label="Total Days" type="number" fullWidth value={daysOnSite} onChange={handleDaysOnSiteChange} inputProps={{ min: 0 }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
+                        <TextField
+                          size="small"
+                          label="Total Days On Site"
+                          type="number"
+                          fullWidth
+                          value={daysOnSite}
+                          onChange={handleDaysOnSiteChange}
+                          inputProps={{ min: 0 }}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }}
+                          onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }}
+                        />
                       </Grid>
                       <Grid item xs={6}>
-                        <TextField size="small" label="Hours per Day" type="number" fullWidth value={hoursPerDay} onChange={e => setHoursPerDay(Math.max(0, Number(e.target.value)))} inputProps={{ min: 0 }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
+                        <TextField size="small" label="Hours per Day" type="number" fullWidth value={hoursPerDay} onChange={e => {
+                          const value = Math.max(0, Number(e.target.value));
+                          setHoursPerDay(value);
+                          updateCurrentResourceField('hoursPerDay', value);
+                        }} inputProps={{ min: 0 }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} onKeyPress={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } }} />
                       </Grid>
-                      <Grid item xs={12}>
-                        <Typography variant="caption" sx={{ mb: 0.5 }}>Start Day On Site</Typography>
-                        <Select
-                          size="small"
-                          fullWidth
-                          value={startDay}
-                          onChange={e => setStartDay(e.target.value)}
-                          disabled={!!startDate}
-                        >
-                          {daysOfWeek.map(day => <MenuItem key={day} value={day}>{day}</MenuItem>)}
-                        </Select>
+                      <Grid container spacing={1} alignItems="center">
+                        <Grid item xs={6}>
+                          <Typography variant="caption" sx={{ mb: 0.5 }}>Start Day On Site</Typography>
+                          <Select
+                            size="small"
+                            fullWidth
+                            value={startDay}
+                            onChange={e => {
+                              setStartDay(e.target.value);
+                              updateCurrentResourceField('startDay', e.target.value);
+                            }}
+                            disabled={!!startDate}
+                          >
+                            {daysOfWeek.map(day => <MenuItem key={day} value={day}>{day}</MenuItem>)}
+                          </Select>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography variant="caption" sx={{ mb: 0.5 }}>Start Time On Site</Typography>
+                          <LocalizationProvider dateAdapter={AdapterDayjs}>
+                            <TimePicker
+                              value={startTimeOnSite}
+                              onChange={setStartTimeOnSite}
+                              minutesStep={30}
+                              ampm
+                              slotProps={{ textField: { size: 'small', fullWidth: true, label: '' } }}
+                              format="hh:mm A"
+                            />
+                          </LocalizationProvider>
+                        </Grid>
                       </Grid>
                       <Grid item xs={12}>
                         <FormControlLabel
-                          control={<Checkbox size="small" checked={includeSaturdays} onChange={e => setIncludeSaturdays(e.target.checked)} />}
+                          control={<Checkbox size="small" checked={includeSaturdays} onChange={e => {
+                            setIncludeSaturdays(e.target.checked);
+                            updateCurrentResourceField('includeSaturdays', e.target.checked);
+                          }} />}
                           label={<Typography variant="caption">Include Saturdays</Typography>}
                         />
                         <FormControlLabel
-                          control={<Checkbox size="small" checked={includeSundays} onChange={e => setIncludeSundays(e.target.checked)} />}
+                          control={<Checkbox size="small" checked={includeSundays} onChange={e => {
+                            setIncludeSundays(e.target.checked);
+                            updateCurrentResourceField('includeSundays', e.target.checked);
+                          }} />}
                           label={<Typography variant="caption">Include Sundays</Typography>}
+                          sx={{ ml: 2 }}
+                        />
+                        <FormControlLabel
+                          control={<Checkbox size="small" checked={otBefore7After5} onChange={e => {
+                            setOtBefore7After5(e.target.checked);
+                            updateCurrentResourceField('otBefore7After5', e.target.checked);
+                          }} />}
+                          label={<Typography variant="caption">OT before 7am and after 5pm</Typography>}
+                          sx={{ ml: 2 }}
                         />
                       </Grid>
                     </Grid>
@@ -947,7 +1521,10 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
                       <Grid item xs={6}><TextField size="small" label="Project Number" fullWidth value={projectNumber} onChange={e => setProjectNumber(e.target.value)} /></Grid>
                       <Grid item xs={6}><TextField size="small" label="Customer" fullWidth value={customer} onChange={e => setCustomer(e.target.value)} /></Grid>
                       <Grid item xs={6}><TextField size="small" label="Project Description" fullWidth value={projectDescription} onChange={e => setProjectDescription(e.target.value)} /></Grid>
-                      <Grid item xs={6}><TextField size="small" label="Technician" fullWidth value={technician} onChange={e => setTechnician(e.target.value)} /></Grid>
+                      <Grid item xs={6}><TextField size="small" label="Technician" fullWidth value={technician} onChange={e => {
+                        setTechnician(e.target.value);
+                        updateCurrentResourceField('technician', e.target.value);
+                      }} /></Grid>
                       <LocalizationProvider dateAdapter={AdapterDayjs}>
                         <Grid item xs={6}>
                           <DatePicker
@@ -980,7 +1557,7 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
               </Grid>
             </Grid>
             {/* Schedule Section */}
-            <Grid item sx={{ flexGrow: 0, width: '100%', mb: 1 }}>
+            <Grid item>
               <Box sx={{ display: 'flex', width: '100%' }}>
                 {/* Schedule Panel */}
                 <Box border={1} borderRadius={1} p={1} sx={{ height: 420, width: 733, background: panelBg, borderColor: panelBorder, color: panelText, display: 'flex', flexDirection: 'column' }}>
@@ -1055,6 +1632,18 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
                                     {day ? (
                                       <>
                                         <Typography variant="caption" sx={{ textAlign: 'left', width: '100%', pl: 0.5 }}>Day {day.dayNumber}</Typography>
+                                        {/* Show start time only for work days */}
+                                        {day.type === 'WorkDay' && startTimeOnSite && (
+                                          <Typography sx={{ mt: 0.2, textAlign: 'left', width: '100%', pl: 0.5, fontSize: '0.7rem' }}>
+                                            {(() => {
+                                              const override = manualOverrides.get(day.dayNumber);
+                                              if (override && override.startTime) {
+                                                return dayjs(override.startTime, 'HH:mm').format('hh:mm A');
+                                              }
+                                              return startTimeOnSite ? startTimeOnSite.format('hh:mm A') : '';
+                                            })()}
+                                          </Typography>
+                                        )}
                                         {/* Only show labour/travel if not a No Activity day */}
                                         {!(manualOverrides.has(day.dayNumber) && manualOverrides.get(day.dayNumber)?.dayType === DayType.Nil) && <>
                                           <Typography sx={{ mt: 0.5, textAlign: 'left', width: '100%', pl: 0.5, fontSize: '0.7rem' }}>Labour: {day.totalLabourHours?.toFixed(1) ?? '0.0'} hrs.</Typography>
@@ -1087,10 +1676,14 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
                   </Box>
                 </Box>
                 {/* Summary Panel */}
-                <Box border={1} borderRadius={1} p={1} sx={{ background: panelBg, borderColor: panelBorder, color: panelText, display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', height: 420, flex: 1, ml: 2 }}>
+                <Box border={1} borderRadius={1} p={1} sx={{ background: panelBg, borderColor: panelBorder, color: panelText, display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', height: 420, flex: 1, ml: 1 }}>
                   <Typography variant="subtitle1" sx={{ mb: 0.5, color: panelText }}>Summary</Typography>
-                  {/* Summary Table */}
+                  
+                  {/* Current Resource Summary */}
                   <Box sx={{ mb: 2 }}>
+                    <Typography variant="caption" sx={{ color: panelText, mb: 1, display: 'block' }}>
+                      {resources[currentResourceIndex]?.name || 'Current Resource'}
+                    </Typography>
                     <TableContainer>
                       <Table size="small" sx={{ minWidth: 300 }}>
                         <TableHead>
@@ -1115,18 +1708,86 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
                       </Table>
                     </TableContainer>
                   </Box>
+                  
                   {/* Total Days and Note */}
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, position: 'relative' }}>
                     <Typography variant="h6" sx={{ fontWeight: 700, mr: 2 }}>Total Days: <span style={{ fontSize: '2rem', fontWeight: 700 }}>{totalDays}</span></Typography>
                     <Box sx={{ flex: 1 }} />
                     <Typography variant="caption" sx={{ position: 'absolute', top: -10, right: 0, color: panelText }}>(Cost + 10%, not incl. per Diem)</Typography>
                   </Box>
-                  {/* Grand Total at the bottom */}
-                  <Box sx={{ mt: 1, border: `1px solid ${panelBorder}`, borderRadius: 1, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', bgcolor: darkMode ? '#222' : '#222' }}>
-                    <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600 }}>Grand total</Typography>
-                    <Typography variant="h4" sx={{ color: darkMode ? '#4fc3f7' : '#00bfff', fontWeight: 700 }}>${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Typography>
-                  </Box>
+                  
+                  {/* Grand Total for All Resources and Current Resource - CONDITIONAL SIDE BY SIDE */}
+                  {resources.length > 1 ? (
+                    <Box sx={{ mt: 1, display: 'flex', flexDirection: 'row', alignItems: 'stretch', width: '100%', gap: 2 }}>
+                      {/* Current Resource Total (left, smaller font) */}
+                      <Box sx={{ flex: 1, border: `1px solid ${panelBorder}`, borderRadius: 1, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', bgcolor: darkMode ? '#222' : '#222', mr: 1 }}>
+                        <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 600 }}>Current Resource Total</Typography>
+                        <Typography variant="h6" sx={{ color: darkMode ? '#4fc3f7' : '#00bfff', fontWeight: 700 }}>${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Typography>
+                      </Box>
+                      {/* All Resources Total (right, bigger font) */}
+                      <Box sx={{ flex: 1, border: `1px solid ${panelBorder}`, borderRadius: 1, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', bgcolor: darkMode ? '#1a1a1a' : '#f0f0f0', ml: 1 }}>
+                        <Typography variant="subtitle1" sx={{ color: panelText, fontWeight: 600, mb: 1 }}>All Resources Total</Typography>
+                        <Typography variant="h4" sx={{ color: darkMode ? '#4fc3f7' : '#1976d2', fontWeight: 700 }}>
+                          ${resources.reduce((sum, resource) => {
+                            // Calculate total for this resource using the same logic as current resource
+                            const resourceSheet = rateSheets.find(s => s.name === resource.selectedSheet) || rateSheets[0];
+                            const resourceCustomSheet = {
+                              ...resourceSheet,
+                              hotelCost: resource.hotelCost,
+                              rentalCarRate: resource.rentalCarRate,
+                              flightCost: resource.flightCost,
+                              mileageRate: resource.mileageRate,
+                              perDiemRate: resource.perDiemRate
+                            };
+                            const resourceCalcResult = calculateEstimate({
+                              daysOnSite: resource.daysOnSite,
+                              hoursPerDay: resource.hoursPerDay,
+                              startDayOfWeek: daysOfWeek.indexOf(resource.startDay),
+                              holdoverDayEnabled: resource.holdoverDayEnabled,
+                              holdoverDayOfWeek: daysOfWeek.indexOf(resource.holdoverDayOfWeek),
+                              separateTravelTo: resource.separateTravelTo,
+                              separateTravelFrom: resource.separateTravelFrom,
+                              travelMethod: resource.travelMethod,
+                              travelDistance: resource.travelDistance,
+                              travelTime: resource.travelTime,
+                              dailyTravelDistance: resource.dailyTravelDistance,
+                              dailyTravelTime: resource.dailyTravelTime,
+                              rateSheet: resourceCustomSheet,
+                              discountPercent: resource.discountPercent,
+                              isEmergency: resource.isEmergency,
+                              hotelRequired: resource.hotelRequired,
+                              rentalCarRequired: resource.rentalCarRequired,
+                              otherExpenses: resource.otherExpenses,
+                              manualOverrides: resource.manualOverrides,
+                              includeSaturdays: resource.includeSaturdays,
+                              includeSundays: resource.includeSundays
+                            });
+                            const resourceTotal = resourceCalcResult.dayDetails.reduce((sum, d) =>
+                              sum +
+                                (d.labourCost ?? 0) +
+                                (d.travelCost ?? 0) +
+                                ((d.hotelCost ?? 0) * 1.1) +
+                                ((d.mileageCost ?? 0) * 1.1) +
+                                ((d.rentalCarCost ?? 0) * 1.1) +
+                                ((d.airfareCost ?? 0) * 1.1) +
+                                (d.perDiem ?? 0),
+                              0
+                            );
+                            return sum + resourceTotal;
+                          }, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  ) : (
+                    <Box sx={{ mt: 1, display: 'flex', flexDirection: 'row', alignItems: 'stretch', width: '100%' }}>
+                      <Box sx={{ flex: 1, border: `1px solid ${panelBorder}`, borderRadius: 1, p: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', bgcolor: darkMode ? '#222' : '#222', minHeight: 120, justifyContent: 'center' }}>
+                        <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 600, mb: 1 }}>Grand Total</Typography>
+                        <Typography variant="h4" sx={{ color: darkMode ? '#4fc3f7' : '#00bfff', fontWeight: 700 }}>${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Typography>
+                      </Box>
+                    </Box>
+                  )}
                 </Box>
+
               </Box>
             </Grid>
             {/* Results Table */}
@@ -1251,12 +1912,237 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode }) => {
           dayNumber={editingDay}
           currentOverride={manualOverrides.get(editingDay) || null}
           defaultDayType={getDefaultDayType(filteredDayDetails.find(d => d.dayNumber === editingDay)!)}
-          defaultLabourHours={filteredDayDetails.find(d => d.dayNumber === editingDay)?.totalLabourHours || 0}
-          defaultTravelHours={filteredDayDetails.find(d => d.dayNumber === editingDay)?.totalTravelHours || 0}
+          defaultLabourHours={(() => {
+            const day = filteredDayDetails.find(d => d.dayNumber === editingDay);
+            const override = manualOverrides.get(editingDay);
+            if ((override && override.dayType === DayType.Travel) || (!override && day && (day.type === 'TravelTo' || day.type === 'TravelFrom'))) {
+              return 0;
+            }
+            return day?.totalLabourHours || 0;
+          })()}
+          defaultTravelHours={(() => {
+            const day = filteredDayDetails.find(d => d.dayNumber === editingDay);
+            const override = manualOverrides.get(editingDay);
+            if ((override && override.dayType === DayType.Travel) || (!override && day && (day.type === 'TravelTo' || day.type === 'TravelFrom'))) {
+              return travelTime;
+            }
+            return day?.totalTravelHours || 0;
+          })()}
+          defaultStartTime={(() => {
+            const override = manualOverrides.get(editingDay);
+            if (override && override.startTime) {
+              return dayjs(override.startTime, 'HH:mm');
+            }
+            return startTimeOnSite;
+          })()}
         />
       )}
+
+      {/* Save Estimate Dialog */}
+      <Dialog open={saveDialogOpen} onClose={() => setSaveDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: darkMode ? '#23262b' : undefined, color: darkMode ? '#fff' : undefined }}>
+          Save Estimate
+        </DialogTitle>
+        <DialogContent sx={{ bgcolor: darkMode ? '#23262b' : undefined }}>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Estimate Name"
+            type="text"
+            fullWidth
+            variant="outlined"
+            value={estimateName}
+            onChange={(e) => setEstimateName(e.target.value)}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleSaveConfirm();
+              }
+            }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: darkMode ? '#23262b' : undefined }}>
+          <Button onClick={() => setSaveDialogOpen(false)} color="inherit" variant="outlined">
+            Cancel
+          </Button>
+          <Button onClick={handleSaveConfirm} color="primary" variant="contained" disabled={!estimateName.trim()}>
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Clone Estimate Dialog */}
+      <Dialog open={cloneDialogOpen} onClose={() => setCloneDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: darkMode ? '#23262b' : undefined, color: darkMode ? '#fff' : undefined }}>
+          Clone Estimate
+        </DialogTitle>
+        <DialogContent sx={{ bgcolor: darkMode ? '#23262b' : undefined }}>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Estimate Name"
+            type="text"
+            fullWidth
+            variant="outlined"
+            value={estimateName}
+            onChange={(e) => setEstimateName(e.target.value)}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleCloneConfirm();
+              }
+            }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: darkMode ? '#23262b' : undefined }}>
+          <Button onClick={() => setCloneDialogOpen(false)} color="inherit" variant="outlined">
+            Cancel
+          </Button>
+          <Button onClick={handleCloneConfirm} color="primary" variant="contained" disabled={!estimateName.trim()}>
+            Clone
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Saved Estimates Dialog */}
+      <Dialog open={savedEstimatesDialogOpen} onClose={() => setSavedEstimatesDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ bgcolor: darkMode ? '#23262b' : undefined, color: darkMode ? '#fff' : undefined }}>
+          Load Saved Estimate
+        </DialogTitle>
+        <DialogContent sx={{ bgcolor: darkMode ? '#23262b' : undefined, minHeight: 300 }}>
+          {savedEstimates.length === 0 ? (
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <Typography variant="body1" color="textSecondary">
+                No saved estimates found.
+              </Typography>
+            </Box>
+          ) : (
+            <List>
+              {savedEstimates
+                .sort((a, b) => b.timestamp - a.timestamp)
+                .map((estimate) => (
+                  <ListItem
+                    key={estimate.id}
+                    sx={{
+                      border: '1px solid',
+                      borderColor: darkMode ? '#444' : '#ddd',
+                      borderRadius: 1,
+                      mb: 1,
+                      '&:hover': {
+                        bgcolor: darkMode ? '#333' : '#f5f5f5'
+                      }
+                    }}
+                  >
+                    <ListItemText
+                      primary={estimate.name}
+                      secondary={`Saved on ${new Date(estimate.timestamp).toLocaleString()}`}
+                    />
+                    <ListItemSecondaryAction>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => handleLoadEstimate(estimate)}
+                        sx={{ mr: 1 }}
+                      >
+                        Load
+                      </Button>
+                      <IconButton
+                        size="small"
+                        onClick={() => deleteSavedEstimate(estimate.id)}
+                        color="error"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </ListItemSecondaryAction>
+                  </ListItem>
+                ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: darkMode ? '#23262b' : undefined }}>
+          <Button onClick={() => setSavedEstimatesDialogOpen(false)} color="inherit" variant="outlined">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+      {/* Add Resource Dialog */}
+      <Dialog open={addResourceDialogOpen} onClose={() => setAddResourceDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: darkMode ? '#23262b' : undefined, color: darkMode ? '#fff' : undefined }}>
+          Add New Resource
+        </DialogTitle>
+        <DialogContent sx={{ bgcolor: darkMode ? '#23262b' : undefined }}>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <TextField
+                autoFocus
+                label="Resource Name"
+                value={newResourceName}
+                onChange={(e) => setNewResourceName(e.target.value)}
+                fullWidth
+                variant="outlined"
+              />
+            </Grid>
+            {resources.length > 1 && (
+              <>
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    Copy settings from:
+                  </Typography>
+                  <Select
+                    value={copyFromResourceIndex}
+                    onChange={(e) => setCopyFromResourceIndex(Number(e.target.value))}
+                    fullWidth
+                  >
+                    {resources.map((resource, index) => (
+                      <MenuItem key={resource.id} value={index}>
+                        {resource.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </Grid>
+                <Grid item xs={12}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={copyOnlyRateSheet}
+                        onChange={(e) => setCopyOnlyRateSheet(e.target.checked)}
+                      />
+                    }
+                    label="Copy only rate sheet and start date (project info always copied)"
+                  />
+                </Grid>
+              </>
+            )}
+          </Grid>
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: darkMode ? '#23262b' : undefined }}>
+          <Button onClick={() => setAddResourceDialogOpen(false)} color="inherit" variant="outlined">
+            Cancel
+          </Button>
+          <Button 
+            onClick={addResource} 
+            color="primary" 
+            variant="contained" 
+            disabled={!newResourceName.trim()}
+          >
+            Add Resource
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Reset All Confirmation Dialog */}
+      <Dialog open={resetAllDialogOpen} onClose={() => setResetAllDialogOpen(false)}>
+        <DialogTitle>Reset All Settings</DialogTitle>
+        <DialogContent>
+          <Typography>Are you sure you want to reset all fields to their default values? This cannot be undone.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setResetAllDialogOpen(false)} color="primary" variant="outlined">Cancel</Button>
+          <Button onClick={handleResetAll} color="error" variant="contained">Reset All</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
 
-export default QuickEstimator; 
+export default QuickEstimator;

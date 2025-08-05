@@ -18,12 +18,17 @@ import {
 } from '@mui/material';
 import { Close as CloseIcon } from '@mui/icons-material';
 import { DayType } from '../models/ResourceDayData';
+import { DatePicker, LocalizationProvider, TimePicker } from '@mui/x-date-pickers';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import { Dayjs } from 'dayjs';
+import dayjs from 'dayjs';
 
 interface ManualDayOverride {
   dayType: DayType;
   labourHours: number;
   travelHours: number;
   includeExpenses?: boolean;
+  startTime?: string;
 }
 
 interface DayEditorDialogProps {
@@ -35,6 +40,7 @@ interface DayEditorDialogProps {
   defaultDayType: DayType;
   defaultLabourHours: number;
   defaultTravelHours: number;
+  defaultStartTime: Dayjs | null;
 }
 
 const dayTypeLabels: Record<DayType, string> = {
@@ -52,12 +58,14 @@ export const DayEditorDialog: React.FC<DayEditorDialogProps> = ({
   currentOverride,
   defaultDayType,
   defaultLabourHours,
-  defaultTravelHours
+  defaultTravelHours,
+  defaultStartTime
 }) => {
   const [dayType, setDayType] = useState<DayType>(defaultDayType);
   const [labourHours, setLabourHours] = useState<number>(defaultLabourHours);
   const [travelHours, setTravelHours] = useState<number>(defaultTravelHours);
   const [includeExpenses, setIncludeExpenses] = useState<boolean>(true);
+  const [startTime, setStartTime] = useState<Dayjs | null>(defaultStartTime);
 
   useEffect(() => {
     if (currentOverride) {
@@ -65,19 +73,34 @@ export const DayEditorDialog: React.FC<DayEditorDialogProps> = ({
       setLabourHours(currentOverride.labourHours);
       setTravelHours(currentOverride.travelHours);
       setIncludeExpenses(currentOverride.includeExpenses !== false);
+      setStartTime(currentOverride.startTime ? dayjs(currentOverride.startTime, 'HH:mm') : defaultStartTime);
     } else {
       setDayType(defaultDayType);
       setLabourHours(defaultLabourHours);
       setTravelHours(defaultTravelHours);
       setIncludeExpenses(true);
+      setStartTime(defaultStartTime);
     }
-  }, [currentOverride, defaultDayType, defaultLabourHours, defaultTravelHours]);
+  }, [currentOverride, defaultDayType, defaultLabourHours, defaultTravelHours, defaultStartTime]);
 
   // Update hours when day type changes to holdover
   useEffect(() => {
     if (dayType === DayType.Holdover) {
       setLabourHours(8);
       setTravelHours(0);
+    }
+    if (dayType === DayType.Travel) {
+      setLabourHours(0);
+      setTravelHours(defaultTravelHours);
+    }
+  }, [dayType, defaultTravelHours]);
+
+  // Update hours and expenses when day type changes to No Activity
+  useEffect(() => {
+    if (dayType === DayType.Nil) {
+      setLabourHours(0);
+      setTravelHours(0);
+      setIncludeExpenses(false);
     }
   }, [dayType]);
 
@@ -86,7 +109,8 @@ export const DayEditorDialog: React.FC<DayEditorDialogProps> = ({
       dayType,
       labourHours,
       travelHours,
-      includeExpenses: dayType === DayType.Nil ? includeExpenses : undefined
+      includeExpenses: dayType === DayType.Nil ? includeExpenses : undefined,
+      startTime: startTime ? startTime.format('HH:mm') : undefined
     };
     onSave(override);
     onClose();
@@ -152,6 +176,21 @@ export const DayEditorDialog: React.FC<DayEditorDialogProps> = ({
               control={<Checkbox checked={includeExpenses} onChange={e => setIncludeExpenses(e.target.checked)} />}
               label="Include expenses for this day"
             />
+          )}
+
+          {/* Start Time Picker for Work Day */}
+          {dayType === DayType.Work && (
+            <LocalizationProvider dateAdapter={AdapterDayjs}>
+              <TimePicker
+                label="Start Time"
+                value={startTime}
+                onChange={setStartTime}
+                minutesStep={30}
+                ampm
+                slotProps={{ textField: { size: 'small', fullWidth: true } }}
+                format="hh:mm A"
+              />
+            </LocalizationProvider>
           )}
 
           {currentOverride && (

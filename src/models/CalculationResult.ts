@@ -9,6 +9,7 @@ export interface DayDetail {
   dayNumber: number;
   dayOfWeek: number; // 0 = Sunday, 1 = Monday, etc.
   type: CalculationDayType;
+  isHoldover: boolean;
   regularLabourHours: number;
   overtimeLabourHours: number;
   premiumLabourHours: number;
