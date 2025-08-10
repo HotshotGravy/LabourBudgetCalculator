@@ -2,7 +2,6 @@ import { CalculationResult, DayDetail, CalculationDayType } from '../models/Calc
 import { RateSheet } from '../models/RateSheet';
 import { HourCategorizerUtil } from './HourCategorizerUtil';
 import { ExpenseCalculator } from './ExpenseCalculator';
-import { DailyHourBreakdown } from '../models/DailyHourBreakdown';
 import { DayType } from '../models/ResourceDayData';
 
 interface ManualDayOverride {
@@ -39,8 +38,17 @@ interface EstimatorInputs {
   startTimeOnSite?: any; // Dayjs | null
 }
 
+interface RawDay {
+  dayNumber: number;
+  dayOfWeek: number;
+  isTravelToDay: boolean;
+  isTravelFromDay: boolean;
+  manualOverride?: ManualDayOverride;
+  type: CalculationDayType;
+  isHoldover: boolean;
+}
+
 export function calculateEstimate(inputs: EstimatorInputs): CalculationResult {
-  console.log('ESTIMATOR ENGINE RUNNING v2');
   const {
     daysOnSite,
     hoursPerDay,
@@ -67,131 +75,150 @@ export function calculateEstimate(inputs: EstimatorInputs): CalculationResult {
     startTimeOnSite = null,
   } = inputs;
 
-  // Discount and emergency logic
+  // Calculate discounted rates
   const discountMultiplier = 1 - (discountPercent / 100);
-  const getRate = (base: number, emergencyBase: number) => isEmergency ? emergencyBase * discountMultiplier : base * discountMultiplier;
+  const getRate = (base: number, emergencyBase: number) => 
+    isEmergency ? emergencyBase * discountMultiplier : base * discountMultiplier;
 
-  // Prepare rates
-  const regularLabourRate = getRate(rateSheet.regularLabourRate, rateSheet.premiumLabourRate);
-  const overtimeLabourRate = getRate(rateSheet.overtimeLabourRate, rateSheet.premiumLabourRate);
-  const premiumLabourRate = rateSheet.premiumLabourRate * discountMultiplier;
-  const regularTravelRate = getRate(rateSheet.regularTravelRate, rateSheet.premiumTravelRate);
-  const overtimeTravelRate = getRate(rateSheet.overtimeTravelRate, rateSheet.premiumTravelRate);
-  const premiumTravelRate = rateSheet.premiumTravelRate * discountMultiplier;
+  const rates = {
+    regularLabour: getRate(rateSheet.regularLabourRate, rateSheet.premiumLabourRate),
+    overtimeLabour: getRate(rateSheet.overtimeLabourRate, rateSheet.premiumLabourRate),
+    premiumLabour: rateSheet.premiumLabourRate * discountMultiplier,
+    regularTravel: getRate(rateSheet.regularTravelRate, rateSheet.premiumTravelRate),
+    overtimeTravel: getRate(rateSheet.overtimeTravelRate, rateSheet.premiumTravelRate),
+    premiumTravel: rateSheet.premiumTravelRate * discountMultiplier,
+  };
 
-  // Track totals
-  let totalLabourCost = 0;
-  let totalTravelCost = 0;
-  let totalExpenses = 0;
-  let totalLabourHours = 0;
-  let totalTravelHours = 0;
+  // Ensure rate hierarchy is maintained
+  if (rates.overtimeLabour <= rates.regularLabour) {
+    rates.overtimeLabour = rates.regularLabour;
+  }
+  if (rates.premiumLabour <= rates.overtimeLabour) {
+    rates.premiumLabour = rates.overtimeLabour;
+  }
+  if (rates.overtimeTravel <= rates.regularTravel) {
+    rates.overtimeTravel = rates.regularTravel;
+  }
+  if (rates.premiumTravel <= rates.overtimeTravel) {
+    rates.premiumTravel = rates.overtimeTravel;
+  }
 
-  // Add this line to fix linter errors:
+  // Initialize totals
+  const totals = {
+    labourCost: 0,
+    travelCost: 0,
+    expenses: 0,
+    labourHours: 0,
+    travelHours: 0,
+  };
+
   const dayDetails: DayDetail[] = [];
+  const rawDays = buildRawSchedule(inputs);
+  const eligibleWorkDays = getEligibleWorkDays(rawDays, includeSaturdays, includeSundays);
+  const onSiteSet = new Set(eligibleWorkDays.slice(0, daysOnSite));
 
-  // --- NEW SCHEDULE BUILDING LOGIC ---
-  // We want to assign the requested number of on-site (work) days, skipping ineligible days,
-  // and extend the schedule as needed until the requested number of work days is reached.
+  // Process each day
+  for (let i = 0; i < rawDays.length; i++) {
+    const rawDay = rawDays[i];
+    const isOnSite = onSiteSet.has(i);
+    const dayDetail = processDayDetail(rawDay, isOnSite, i, rawDays.length, inputs, rates);
+    
+    dayDetails.push(dayDetail);
+    
+    // Aggregate totals
+    totals.labourCost += dayDetail.labourCost || 0;
+    totals.travelCost += dayDetail.travelCost || 0;
+    totals.expenses += (dayDetail.hotelCost || 0) + (dayDetail.perDiem || 0) + 
+                     (dayDetail.mileageCost || 0) + (dayDetail.rentalCarCost || 0) + 
+                     (dayDetail.airfareCost || 0);
+    totals.labourHours += dayDetail.totalLabourHours || 0;
+    totals.travelHours += dayDetail.totalTravelHours || 0;
+  }
 
-  const rawDays: Array<{
-    dayNumber: number;
-    dayOfWeek: number;
-    isTravelToDay: boolean;
-    isTravelFromDay: boolean;
-    manualOverride?: ManualDayOverride;
-    type: CalculationDayType;
-    isHoldover: boolean;
-  }> = [];
+  // Add 10% markup to expenses (except per diem)
+  const markup = 0.10;
+  const markupExpenses = dayDetails.reduce((sum, day) => 
+    sum + ((day.hotelCost || 0) + (day.rentalCarCost || 0) + (day.airfareCost || 0)) * markup, 0
+  );
+  
+  totals.expenses += markupExpenses + otherExpenses;
+  const grandTotal = totals.labourCost + totals.travelCost + totals.expenses;
 
-  let currentDayOfWeek = startDayOfWeek;
-  let assignedOnSite = 0;
-  let dayIndex = 0;
-  let totalDays = 0;
-  let travelToAdded = false;
-  let travelFromAdded = false;
-  let pendingWorkDays = daysOnSite;
+  return {
+    totalLabourCost: totals.labourCost,
+    totalTravelCost: totals.travelCost,
+    totalExpenses: totals.expenses,
+    grandTotal,
+    totalDays: rawDays.length,
+    totalLabourHours: totals.labourHours,
+    totalTravelHours: totals.travelHours,
+    dayDetails
+  };
+}
+
+function buildRawSchedule(inputs: EstimatorInputs): RawDay[] {
+  const { 
+    daysOnSite, 
+    startDayOfWeek, 
+    separateTravelTo, 
+    separateTravelFrom, 
+    manualOverrides = new Map(),
+    holdoverDayEnabled,
+    holdoverDayOfWeek,
+    includeSaturdays,
+    includeSundays 
+  } = inputs;
+  
+  const rawDays: RawDay[] = [];
 
   // Add travel to day if needed
   if (separateTravelTo) {
-    // The travel day should be the day before the selected start day
     const travelToDayOfWeek = (startDayOfWeek + 6) % 7;
     rawDays.push({
-      dayNumber: rawDays.length + 1,
+      dayNumber: 1,
       dayOfWeek: travelToDayOfWeek,
       isTravelToDay: true,
       isTravelFromDay: false,
-      manualOverride: manualOverrides.get(rawDays.length + 1),
+      manualOverride: manualOverrides.get(1),
       type: CalculationDayType.TravelTo,
       isHoldover: false
     });
-    // Do NOT increment currentDayOfWeek here; the first on-site day should use startDayOfWeek
-    travelToAdded = true;
   }
 
-  // Main loop: keep adding days until we've assigned the requested number of on-site days
-  // The first on-site day should always use startDayOfWeek
-  currentDayOfWeek = startDayOfWeek;
-  assignedOnSite = 0;
+  // Add work days
+  let currentDayOfWeek = startDayOfWeek;
+  let assignedOnSite = 0;
+
   while (assignedOnSite < daysOnSite) {
     const dayNumber = rawDays.length + 1;
     const manualOverride = manualOverrides.get(dayNumber);
-    let type: CalculationDayType = CalculationDayType.WorkDay;
-    let isHoldover = false;
-    let isTravelToDay = false;
-    let isTravelFromDay = false;
-    let dayOfWeek = currentDayOfWeek;
-
-    // Check for manual override
-    if (manualOverride) {
-      switch (manualOverride.dayType) {
-        case DayType.Work:
-          type = CalculationDayType.WorkDay;
-          break;
-        case DayType.Travel:
-          // If we haven't added travel from yet and we're at the end, mark as travel from
-          type = CalculationDayType.TravelFrom;
-          isTravelFromDay = true;
-          break;
-        case DayType.Holdover:
-          type = CalculationDayType.WorkDay;
-          isHoldover = true;
-          break;
-        case DayType.Nil:
-          type = CalculationDayType.None;
-          break;
-      }
-    } else {
-      // Holdover logic
-      if (
-        holdoverDayEnabled &&
-        ((dayOfWeek + 7) % 7) === holdoverDayOfWeek
-      ) {
-        isHoldover = true;
-      }
-      // Exclude weekends if needed
-      if ((dayOfWeek === 6 && !includeSaturdays) || (dayOfWeek === 0 && !includeSundays)) {
-        type = CalculationDayType.None;
-      }
-    }
-
-    // Only count as on-site if eligible
-    const isEligible =
-      type === CalculationDayType.WorkDay &&
-      !isHoldover &&
-      (!manualOverride || manualOverride.dayType !== DayType.Nil);
-    if (isEligible) {
-      assignedOnSite++;
-    }
+    
+    const dayInfo = determineDayType(
+      currentDayOfWeek, 
+      manualOverride, 
+      holdoverDayEnabled, 
+      holdoverDayOfWeek, 
+      includeSaturdays, 
+      includeSundays
+    );
 
     rawDays.push({
       dayNumber,
-      dayOfWeek,
-      isTravelToDay,
-      isTravelFromDay,
+      dayOfWeek: currentDayOfWeek,
+      isTravelToDay: false,
+      isTravelFromDay: false,
       manualOverride,
-      type,
-      isHoldover
+      type: dayInfo.type,
+      isHoldover: dayInfo.isHoldover
     });
+
+    // Count eligible on-site days
+    if (dayInfo.type === CalculationDayType.WorkDay && 
+        !dayInfo.isHoldover && 
+        (!manualOverride || manualOverride.dayType !== DayType.Nil)) {
+      assignedOnSite++;
+    }
+
     currentDayOfWeek = (currentDayOfWeek + 1) % 7;
   }
 
@@ -206,273 +233,449 @@ export function calculateEstimate(inputs: EstimatorInputs): CalculationResult {
       type: CalculationDayType.TravelFrom,
       isHoldover: false
     });
-    // currentDayOfWeek = (currentDayOfWeek + 1) % 7; // Not needed unless more days follow
-    travelFromAdded = true;
   }
 
-  // --- REST OF THE LOGIC UNCHANGED ---
-  // Build a list of all eligible day indexes
+  return rawDays;
+}
+
+function determineDayType(
+  dayOfWeek: number,
+  manualOverride: ManualDayOverride | undefined,
+  holdoverDayEnabled: boolean,
+  holdoverDayOfWeek: number,
+  includeSaturdays: boolean,
+  includeSundays: boolean
+): { type: CalculationDayType; isHoldover: boolean } {
+  
+  if (manualOverride) {
+    switch (manualOverride.dayType) {
+      case DayType.Work:
+        return { type: CalculationDayType.WorkDay, isHoldover: false };
+      case DayType.Travel:
+        return { type: CalculationDayType.TravelFrom, isHoldover: false };
+      case DayType.Holdover:
+        return { type: CalculationDayType.WorkDay, isHoldover: true };
+      case DayType.Nil:
+        return { type: CalculationDayType.None, isHoldover: false };
+    }
+  }
+
+  // Check for holdover
+  const isHoldover = holdoverDayEnabled && ((dayOfWeek + 7) % 7) === holdoverDayOfWeek;
+  
+  // Check for excluded weekends
+  if ((dayOfWeek === 6 && !includeSaturdays) || (dayOfWeek === 0 && !includeSundays)) {
+    return { type: CalculationDayType.None, isHoldover: false };
+  }
+
+  return { type: CalculationDayType.WorkDay, isHoldover };
+}
+
+function getEligibleWorkDays(
+  rawDays: RawDay[], 
+  includeSaturdays: boolean, 
+  includeSundays: boolean
+): number[] {
   const eligibleIndexes: number[] = [];
+  
   for (let i = 0; i < rawDays.length; i++) {
-    const d = rawDays[i];
-    const isSaturday = d.dayOfWeek === 6;
-    const isSunday = d.dayOfWeek === 0;
-    const isEligible =
-      d.type === CalculationDayType.WorkDay &&
-      !d.isHoldover &&
-      (!d.manualOverride || d.manualOverride.dayType !== DayType.Nil) &&
-      ((includeSaturdays || !isSaturday) && (includeSundays || !isSunday));
+    const day = rawDays[i];
+    const isSaturday = day.dayOfWeek === 6;
+    const isSunday = day.dayOfWeek === 0;
+    
+    const isEligible = day.type === CalculationDayType.WorkDay &&
+                      !day.isHoldover &&
+                      (!day.manualOverride || day.manualOverride.dayType !== DayType.Nil) &&
+                      ((includeSaturdays || !isSaturday) && (includeSundays || !isSunday));
+    
     if (isEligible) {
       eligibleIndexes.push(i);
     }
   }
-  // Assign on-site status to the first daysOnSite eligible days
-  const onSiteSet = new Set(eligibleIndexes.slice(0, daysOnSite));
+  
+  return eligibleIndexes;
+}
 
-  // Now build the final dayDetails array with correct on-site assignment
-  for (let i = 0; i < rawDays.length; i++) {
-    const d = rawDays[i];
-    let type = d.type;
-    let isHoldover = d.isHoldover;
-    let manualOverride = d.manualOverride;
-    let dayOfWeek = d.dayOfWeek;
-    let dayNumber = d.dayNumber;
-    let isOnSite = onSiteSet.has(i);
-    // If not on-site, set to no-activity unless it's travel or holdover
-    if (!isOnSite && type === CalculationDayType.WorkDay && !isHoldover) {
-      type = CalculationDayType.None;
-    }
-    // Calculate hours
-    let labourHours = 0;
-    let travelHours = 0;
-    if (manualOverride) {
-      if (manualOverride.dayType === DayType.Holdover) {
-        labourHours = 8;
-        travelHours = 0;
-      } else {
-        labourHours = manualOverride.labourHours;
-        travelHours = manualOverride.travelHours;
-      }
-    } else {
-      if (type === CalculationDayType.WorkDay) {
-        labourHours = isHoldover ? 8 : hoursPerDay;
-        travelHours = isHoldover ? 0 : dailyTravelTime * 2;
-      } else if (type === CalculationDayType.TravelTo || type === CalculationDayType.TravelFrom) {
-        labourHours = 0;
-        travelHours = travelTime;
-      }
-    }
-    // For Nil (No Activity) days, set labour/travel to zero but optionally include expenses
-    if (type === CalculationDayType.None) {
-      let mileageCost = 0, hotelCost = 0, rentalCarCost = 0, flightCost = 0, perDiem = 0;
-      if (!manualOverride || manualOverride.includeExpenses !== false) {
-        const isFirstDay = i === 0;
-        const isLastDay = i === rawDays.length - 1;
-        mileageCost = ExpenseCalculator.calculateMileageCost(
-          rateSheet.mileageRate,
-          travelDistance,
-          dailyTravelDistance,
-          isFirstDay || isLastDay,
-          rentalCarRequired,
-          travelMethod
-        );
-        hotelCost = ExpenseCalculator.calculateHotelCost(
-          rateSheet.hotelCost,
-          hotelRequired,
-          isLastDay
-        );
-        rentalCarCost = ExpenseCalculator.calculateRentalCarCost(
-          rateSheet.rentalCarRate,
-          rentalCarRequired
-        );
-        flightCost = ExpenseCalculator.calculateFlightCost(
-          rateSheet.flightCost,
-          travelMethod,
-          false, // not a travel day
-          isFirstDay,
-          isLastDay,
-          separateTravelTo,
-          separateTravelFrom
-        );
-        perDiem = rateSheet.perDiemRate;
-      }
-      const totalDayCost = mileageCost + hotelCost + rentalCarCost + flightCost + perDiem;
-      totalExpenses += mileageCost + hotelCost + rentalCarCost + flightCost + perDiem;
-      dayDetails.push({
-        dayNumber,
-        dayOfWeek,
-        type,
-        isHoldover: false,
-        regularLabourHours: 0,
-        overtimeLabourHours: 0,
-        premiumLabourHours: 0,
-        totalLabourHours: 0,
-        regularTravelHours: 0,
-        overtimeTravelHours: 0,
-        premiumTravelHours: 0,
-        totalTravelHours: 0,
-        labourCost: 0,
-        travelCost: 0,
-        hotelCost,
-        perDiem,
-        mileageCost,
-        rentalCarCost,
-        airfareCost: flightCost,
-        totalDayCost
-      });
-      continue;
-    }
-    // --- OT BEFORE 7AM/AFTER 5PM LOGIC ---
-    let breakdown;
-    if (
-      otBefore7After5 &&
-      type === CalculationDayType.WorkDay &&
-      !isHoldover &&
-      dayOfWeek >= 1 && dayOfWeek <= 5 // Monday=1, ..., Friday=5
-    ) {
-      // Determine start time (per-day override or global)
-      let startTimeStr = (manualOverride && manualOverride.startTime) ? manualOverride.startTime : (startTimeOnSite ? startTimeOnSite.format ? startTimeOnSite.format('HH:mm') : startTimeOnSite : '08:00');
-      let startHour = parseInt(startTimeStr.split(':')[0], 10);
-      let startMin = parseInt(startTimeStr.split(':')[1], 10);
-      let startMinutes = startHour * 60 + startMin;
-      let endMinutes = startMinutes + Math.round(labourHours * 60);
-      let otMinutes = 0;
-      let regMinutes = 0;
-      
-      // Overtime before 7:00 AM
-      if (startMinutes < 420) { // 420 = 7*60
-        let otEnd = Math.min(420, endMinutes);
-        otMinutes += otEnd - startMinutes;
-      }
-      
-      // Overtime after 5:00 PM
-      if (endMinutes > 1020) { // 1020 = 17*60
-        let otStart = Math.max(1020, startMinutes);
-        otMinutes += endMinutes - otStart;
-      }
-      
-      // Regular hours are the remaining hours (between 7am and 5pm)
-      regMinutes = Math.max(0, endMinutes - startMinutes - otMinutes);
-      
-      let regHours = regMinutes / 60;
-      let otHours = otMinutes / 60;
-      
-      breakdown = {
-        regularLabourHours: regHours,
-        overtimeLabourHours: otHours,
-        premiumLabourHours: 0,
-        regularTravelHours: 0,
-        overtimeTravelHours: 0,
-        premiumTravelHours: 0
-      };
-    } else {
-      breakdown = HourCategorizerUtil.categorizeDailyHours(
-        labourHours,
-        travelHours,
-        dayOfWeek,
-        isEmergency,
-        isHoldover
-      );
-    }
-    // Calculate costs
-    const labourCost =
-      (breakdown.regularLabourHours * regularLabourRate) +
-      (breakdown.overtimeLabourHours * overtimeLabourRate) +
-      (breakdown.premiumLabourHours * premiumLabourRate);
-    const travelCost =
-      (breakdown.regularTravelHours * regularTravelRate) +
-      (breakdown.overtimeTravelHours * overtimeTravelRate) +
-      (breakdown.premiumTravelHours * premiumTravelRate);
-    // Expenses
-    const isFirstDay = i === 0;
-    const isLastDay = i === rawDays.length - 1;
-    const mileageCost = ExpenseCalculator.calculateMileageCost(
-      rateSheet.mileageRate,
-      travelDistance,
-      dailyTravelDistance,
-      isFirstDay || isLastDay,
-      rentalCarRequired,
-      travelMethod
-    );
-    const hotelCost = ExpenseCalculator.calculateHotelCost(
-      rateSheet.hotelCost,
-      hotelRequired,
-      isLastDay
-    );
-    const rentalCarCost = ExpenseCalculator.calculateRentalCarCost(
-      rateSheet.rentalCarRate,
-      rentalCarRequired
-    );
-    const flightCost = ExpenseCalculator.calculateFlightCost(
-      rateSheet.flightCost,
-      travelMethod,
-      type === CalculationDayType.TravelTo || type === CalculationDayType.TravelFrom,
-      isFirstDay,
-      isLastDay,
-      separateTravelTo,
-      separateTravelFrom
-    );
-    const perDiem = ExpenseCalculator.calculatePerDiemCost(
-      rateSheet.perDiemRate,
-      labourHours,
-      travelHours
-    );
-    const totalDayCost =
-      labourCost +
-      travelCost +
-      mileageCost +
-      hotelCost +
-      rentalCarCost +
-      flightCost +
-      perDiem;
-    // Aggregate totals
-    totalLabourCost += labourCost;
-    totalTravelCost += travelCost;
-    totalExpenses += mileageCost + hotelCost + rentalCarCost + flightCost + perDiem;
-    totalLabourHours += breakdown.regularLabourHours + breakdown.overtimeLabourHours + breakdown.premiumLabourHours;
-    totalTravelHours += breakdown.regularTravelHours + breakdown.overtimeTravelHours + breakdown.premiumTravelHours;
-    dayDetails.push({
-      dayNumber,
-      dayOfWeek,
-      type,
-      isHoldover,
-      regularLabourHours: breakdown.regularLabourHours,
-      overtimeLabourHours: breakdown.overtimeLabourHours,
-      premiumLabourHours: breakdown.premiumLabourHours,
-      totalLabourHours: breakdown.regularLabourHours + breakdown.overtimeLabourHours + breakdown.premiumLabourHours,
-      regularTravelHours: breakdown.regularTravelHours,
-      overtimeTravelHours: breakdown.overtimeTravelHours,
-      premiumTravelHours: breakdown.premiumTravelHours,
-      totalTravelHours: breakdown.regularTravelHours + breakdown.overtimeTravelHours + breakdown.premiumTravelHours,
-      labourCost,
-      travelCost,
-      hotelCost,
-      perDiem,
-      mileageCost,
-      rentalCarCost,
-      airfareCost: flightCost,
-      totalDayCost
-    });
+function processDayDetail(
+  rawDay: RawDay,
+  isOnSite: boolean,
+  dayIndex: number,
+  totalDays: number,
+  inputs: EstimatorInputs,
+  rates: any
+): DayDetail {
+  const {
+    hoursPerDay,
+    dailyTravelTime,
+    travelTime,
+    otBefore7After5 = false,
+    startTimeOnSite,
+    rateSheet,
+    hotelRequired,
+    rentalCarRequired,
+    travelMethod,
+    travelDistance,
+    dailyTravelDistance,
+    separateTravelTo,
+    separateTravelFrom
+  } = inputs;
+
+  let type = rawDay.type;
+  const { isHoldover, manualOverride, dayOfWeek, dayNumber } = rawDay;
+
+  // Adjust type if not on-site
+  if (!isOnSite && type === CalculationDayType.WorkDay && !isHoldover) {
+    type = CalculationDayType.None;
   }
 
-  // Add markup to expenses (10%) except mileage and per diem
-  const markup = 0.10;
-  let markupExpenses = 0;
-  dayDetails.forEach(day => {
-    markupExpenses += (day.hotelCost + day.rentalCarCost + day.airfareCost) * markup;
-  });
-  totalExpenses += markupExpenses + otherExpenses;
+  // Handle No Activity days
+  if (type === CalculationDayType.None) {
+    return createNoActivityDay(rawDay, dayIndex, totalDays, inputs);
+  }
 
-  const grandTotal = totalLabourCost + totalTravelCost + totalExpenses;
+  // Calculate hours
+  const { labourHours, travelHours } = calculateDayHours(
+    type, manualOverride, isHoldover, hoursPerDay, dailyTravelTime, travelTime
+  );
+
+  // Get hour breakdown
+  const breakdown = getHourBreakdown(
+    labourHours, travelHours, dayOfWeek, inputs.isEmergency, isHoldover, 
+    otBefore7After5, manualOverride, startTimeOnSite
+  );
+
+  // Calculate costs
+  const labourCost = calculateLabourCost(breakdown, rates);
+  const travelCost = calculateTravelCost(breakdown, rates);
+
+  // Calculate expenses
+  const isFirstDay = dayIndex === 0;
+  const isLastDay = dayIndex === totalDays - 1;
+  const expenses = calculateExpenses(
+    type, isFirstDay, isLastDay, labourHours, travelHours, rateSheet,
+    hotelRequired, rentalCarRequired, travelMethod, travelDistance,
+    dailyTravelDistance, separateTravelTo, separateTravelFrom
+  );
+
+  const totalDayCost = labourCost + travelCost + expenses.total;
 
   return {
-    totalLabourCost,
-    totalTravelCost,
-    totalExpenses,
-    grandTotal,
-    totalDays,
-    totalLabourHours,
-    totalTravelHours,
-    dayDetails
+    dayNumber,
+    dayOfWeek,
+    type,
+    isHoldover,
+    regularLabourHours: breakdown.regularLabourHours,
+    overtimeLabourHours: breakdown.overtimeLabourHours,
+    premiumLabourHours: breakdown.premiumLabourHours,
+    totalLabourHours: breakdown.regularLabourHours + breakdown.overtimeLabourHours + breakdown.premiumLabourHours,
+    regularTravelHours: breakdown.regularTravelHours,
+    overtimeTravelHours: breakdown.overtimeTravelHours,
+    premiumTravelHours: breakdown.premiumTravelHours,
+    totalTravelHours: breakdown.regularTravelHours + breakdown.overtimeTravelHours + breakdown.premiumTravelHours,
+    labourCost,
+    travelCost,
+    hotelCost: expenses.hotel,
+    perDiem: expenses.perDiem,
+    mileageCost: expenses.mileage,
+    rentalCarCost: expenses.rentalCar,
+    airfareCost: expenses.flight,
+    totalDayCost
   };
-} 
+}
+
+function createNoActivityDay(
+  rawDay: RawDay,
+  dayIndex: number,
+  totalDays: number,
+  inputs: EstimatorInputs
+): DayDetail {
+  const { dayNumber, dayOfWeek, manualOverride } = rawDay;
+  let expenses = { hotel: 0, perDiem: 0, mileage: 0, rentalCar: 0, flight: 0, total: 0 };
+
+  // Include expenses unless explicitly disabled
+  if (!manualOverride || manualOverride.includeExpenses !== false) {
+    const isFirstDay = dayIndex === 0;
+    const isLastDay = dayIndex === totalDays - 1;
+    expenses = calculateExpenses(
+      CalculationDayType.None, isFirstDay, isLastDay, 0, 0, inputs.rateSheet,
+      inputs.hotelRequired, inputs.rentalCarRequired, inputs.travelMethod,
+      inputs.travelDistance, inputs.dailyTravelDistance, inputs.separateTravelTo, inputs.separateTravelFrom
+    );
+  }
+
+  return {
+    dayNumber,
+    dayOfWeek,
+    type: CalculationDayType.None,
+    isHoldover: false,
+    regularLabourHours: 0,
+    overtimeLabourHours: 0,
+    premiumLabourHours: 0,
+    totalLabourHours: 0,
+    regularTravelHours: 0,
+    overtimeTravelHours: 0,
+    premiumTravelHours: 0,
+    totalTravelHours: 0,
+    labourCost: 0,
+    travelCost: 0,
+    hotelCost: expenses.hotel,
+    perDiem: expenses.perDiem,
+    mileageCost: expenses.mileage,
+    rentalCarCost: expenses.rentalCar,
+    airfareCost: expenses.flight,
+    totalDayCost: expenses.total
+  };
+}
+
+function calculateDayHours(
+  type: CalculationDayType,
+  manualOverride: ManualDayOverride | undefined,
+  isHoldover: boolean,
+  hoursPerDay: number,
+  dailyTravelTime: number,
+  travelTime: number
+): { labourHours: number; travelHours: number } {
+  
+  if (manualOverride) {
+    if (manualOverride.dayType === DayType.Holdover) {
+      return { labourHours: 8, travelHours: 0 };
+    }
+    return { labourHours: manualOverride.labourHours, travelHours: manualOverride.travelHours };
+  }
+
+  if (type === CalculationDayType.WorkDay) {
+    return {
+      labourHours: isHoldover ? 8 : hoursPerDay,
+      travelHours: isHoldover ? 0 : dailyTravelTime * 2
+    };
+  }
+
+  if (type === CalculationDayType.TravelTo || type === CalculationDayType.TravelFrom) {
+    return { labourHours: 0, travelHours: travelTime };
+  }
+
+  return { labourHours: 0, travelHours: 0 };
+}
+
+function getHourBreakdown(
+  labourHours: number,
+  travelHours: number,
+  dayOfWeek: number,
+  isEmergency: boolean,
+  isHoldover: boolean,
+  otBefore7After5: boolean,
+  manualOverride: ManualDayOverride | undefined,
+  startTimeOnSite: any
+) {
+  // Handle OT before 7am/after 5pm logic for weekdays
+  if (otBefore7After5 && dayOfWeek >= 1 && dayOfWeek <= 5 && !isHoldover) {
+    // Check if there would actually be time-based overtime
+    const timeBasedBreakdown = calculateTimeBasedOT(labourHours, travelHours, manualOverride, startTimeOnSite);
+    
+    // Only use time-based logic if there is actual time-based overtime
+    if (timeBasedBreakdown.overtimeLabourHours > 0 || timeBasedBreakdown.overtimeTravelHours > 0) {
+      return {
+        regularLabourHours: timeBasedBreakdown.regularLabourHours,
+        overtimeLabourHours: timeBasedBreakdown.overtimeLabourHours,
+        premiumLabourHours: timeBasedBreakdown.premiumLabourHours,
+        regularTravelHours: timeBasedBreakdown.regularTravelHours,
+        overtimeTravelHours: timeBasedBreakdown.overtimeTravelHours,
+        premiumTravelHours: timeBasedBreakdown.premiumTravelHours
+      };
+    }
+  }
+
+  return HourCategorizerUtil.categorizeDailyHours(
+    labourHours, travelHours, dayOfWeek, isEmergency, isHoldover
+  );
+}
+
+// ========================================
+// ADD this helper function to estimatorEngine.ts
+// ========================================
+
+// ADD this new function after the getHourBreakdown function:
+
+function categorizeTravelHours(
+  hours: number,
+  dayOfWeek: number,
+  isEmergency: boolean
+): { regular: number; overtime: number; premium: number } {
+  if (hours <= 0) return { regular: 0, overtime: 0, premium: 0 };
+  
+  if (isEmergency) {
+    return { regular: 0, overtime: 0, premium: hours };
+  }
+  
+  if (dayOfWeek === 0) { // Sunday = Premium
+    return { regular: 0, overtime: 0, premium: hours };
+  }
+  
+  if (dayOfWeek === 6) { // Saturday = Overtime
+    return { regular: 0, overtime: hours, premium: 0 };
+  }
+  
+  // Weekdays = Regular (travel is typically not subject to daily OT limits)
+  return { regular: hours, overtime: 0, premium: 0 };
+}
+
+function calculateTimeBasedOT(
+  labourHours: number,
+  travelHours: number,
+  manualOverride: ManualDayOverride | undefined,
+  startTimeOnSite: any
+) {
+  const startTimeStr = (manualOverride && manualOverride.startTime) ? 
+    manualOverride.startTime : 
+    (startTimeOnSite ? (startTimeOnSite.format ? startTimeOnSite.format('HH:mm') : startTimeOnSite) : '08:00');
+  
+  const [startHour, startMin] = startTimeStr.split(':').map(Number);
+  const startMinutes = startHour * 60 + startMin;
+  
+  // Calculate travel start and end times
+  const travelStartMinutes = startMinutes - Math.round((travelHours / 2) * 60);
+  const labourEndMinutes = startMinutes + Math.round(labourHours * 60);
+  const travelEndMinutes = labourEndMinutes + Math.round((travelHours / 2) * 60);
+  
+  let labourOtMinutes = 0;
+  let travelOtMinutes = 0;
+  
+  // OT before 7:00 AM (420 minutes)
+  if (travelStartMinutes < 420) {
+    const otEnd = Math.min(420, travelEndMinutes);
+    const totalOtBefore7 = otEnd - travelStartMinutes;
+    
+    // Distribute overtime proportionally between travel and labour
+    if (totalOtBefore7 > 0) {
+      const travelRatio = travelHours / (labourHours + travelHours);
+      const labourRatio = labourHours / (labourHours + travelHours);
+      
+      travelOtMinutes += totalOtBefore7 * travelRatio;
+      labourOtMinutes += totalOtBefore7 * labourRatio;
+    }
+  }
+  
+  // OT after 5:00 PM (1020 minutes)
+  if (travelEndMinutes > 1020) {
+    const otStart = Math.max(1020, travelStartMinutes);
+    const totalOtAfter5 = travelEndMinutes - otStart;
+    
+    // Distribute overtime proportionally between travel and labour
+    if (totalOtAfter5 > 0) {
+      const travelRatio = travelHours / (labourHours + travelHours);
+      const labourRatio = labourHours / (labourHours + travelHours);
+      
+      travelOtMinutes += totalOtAfter5 * travelRatio;
+      labourOtMinutes += totalOtAfter5 * labourRatio;
+    }
+  }
+  
+  // Calculate regular hours after time-based overtime
+  const labourRegMinutes = Math.max(0, Math.round(labourHours * 60) - labourOtMinutes);
+  const travelRegMinutes = Math.max(0, Math.round(travelHours * 60) - travelOtMinutes);
+  
+  // Apply 8-hour threshold logic to remaining regular hours
+  const totalRegularHours = (labourRegMinutes + travelRegMinutes) / 60;
+  const regularHoursLimit = 8.0;
+  
+  if (totalRegularHours > regularHoursLimit) {
+    // Calculate how much overtime to add due to threshold
+    const thresholdOtHours = totalRegularHours - regularHoursLimit;
+    const thresholdOtMinutes = thresholdOtHours * 60;
+    
+    // Distribute threshold overtime proportionally
+    if (thresholdOtMinutes > 0 && (labourRegMinutes + travelRegMinutes) > 0) {
+      const labourRatio = labourRegMinutes / (labourRegMinutes + travelRegMinutes);
+      const travelRatio = travelRegMinutes / (labourRegMinutes + travelRegMinutes);
+      
+      const labourThresholdOt = thresholdOtMinutes * labourRatio;
+      const travelThresholdOt = thresholdOtMinutes * travelRatio;
+      
+      // Update overtime and regular hours
+      labourOtMinutes += labourThresholdOt;
+      travelOtMinutes += travelThresholdOt;
+      
+      // Recalculate regular hours
+      const finalLabourRegMinutes = Math.max(0, labourRegMinutes - labourThresholdOt);
+      const finalTravelRegMinutes = Math.max(0, travelRegMinutes - travelThresholdOt);
+      
+      return {
+        regularLabourHours: finalLabourRegMinutes / 60,
+        overtimeLabourHours: labourOtMinutes / 60,
+        premiumLabourHours: 0,
+        regularTravelHours: finalTravelRegMinutes / 60,
+        overtimeTravelHours: travelOtMinutes / 60,
+        premiumTravelHours: 0
+      };
+    }
+  }
+  
+  return {
+    regularLabourHours: labourRegMinutes / 60,
+    overtimeLabourHours: labourOtMinutes / 60,
+    premiumLabourHours: 0,
+    regularTravelHours: travelRegMinutes / 60,
+    overtimeTravelHours: travelOtMinutes / 60,
+    premiumTravelHours: 0
+  };
+}
+
+function calculateLabourCost(breakdown: any, rates: any): number {
+  return (breakdown.regularLabourHours * rates.regularLabour) +
+         (breakdown.overtimeLabourHours * rates.overtimeLabour) +
+         (breakdown.premiumLabourHours * rates.premiumLabour);
+}
+
+function calculateTravelCost(breakdown: any, rates: any): number {
+  return (breakdown.regularTravelHours * rates.regularTravel) +
+         (breakdown.overtimeTravelHours * rates.overtimeTravel) +
+         (breakdown.premiumTravelHours * rates.premiumTravel);
+}
+
+function calculateExpenses(
+  type: CalculationDayType,
+  isFirstDay: boolean,
+  isLastDay: boolean,
+  labourHours: number,
+  travelHours: number,
+  rateSheet: RateSheet,
+  hotelRequired: boolean,
+  rentalCarRequired: boolean,
+  travelMethod: string,
+  travelDistance: number,
+  dailyTravelDistance: number,
+  separateTravelTo: boolean,
+  separateTravelFrom: boolean
+) {
+  const mileage = ExpenseCalculator.calculateMileageCost(
+    rateSheet.mileageRate, travelDistance, dailyTravelDistance,
+    isFirstDay || isLastDay, rentalCarRequired, travelMethod
+  );
+  
+  const hotel = ExpenseCalculator.calculateHotelCost(
+    rateSheet.hotelCost, hotelRequired, isLastDay
+  );
+  
+  const rentalCar = ExpenseCalculator.calculateRentalCarCost(
+    rateSheet.rentalCarRate, rentalCarRequired
+  );
+  
+  const flight = ExpenseCalculator.calculateFlightCost(
+    rateSheet.flightCost, travelMethod,
+    type === CalculationDayType.TravelTo || type === CalculationDayType.TravelFrom,
+    isFirstDay, isLastDay, separateTravelTo, separateTravelFrom
+  );
+  
+  const perDiem = ExpenseCalculator.calculatePerDiemCost(
+    rateSheet.perDiemRate, labourHours, travelHours
+  );
+  
+  return {
+    mileage,
+    hotel,
+    rentalCar,
+    flight,
+    perDiem,
+    total: mileage + hotel + rentalCar + flight + perDiem
+  };
+}
