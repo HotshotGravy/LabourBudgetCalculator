@@ -1103,18 +1103,18 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode, onBackToWelco
 
     // Data rows
     let currentRow = 4;
-    let currentResource = '';
+    let currentDateKey = '';
     const dayRows: any[] = [];
 
     allDayDetails.forEach(({ resourceName, day, resourceRateSheet }) => {
-      // Add resource separator if this is a new resource
-      if (resourceName !== currentResource) {
-        if (currentResource !== '') {
-          // Add blank separator row
+      // Add date separator if this is a new date
+      if (day.date !== currentDateKey) {
+        if (currentDateKey !== '') {
+          // Add blank separator row between different dates
           dayRows.push(Array(20).fill(''));
           currentRow++;
         }
-        currentResource = resourceName;
+        currentDateKey = day.date;
       }
 
       // Calculate costs using the resource's rate sheet
