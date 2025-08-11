@@ -1008,7 +1008,7 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode, onBackToWelco
     const wsDetail = workbook.addWorksheet('Daily Breakdown');
     wsDetail.views = [{ showGridLines: false }];
     wsDetail.columns = [
-      { header: '', width: 16 }, // Resource
+      { header: '', width: 40 }, // Resource
       { header: '', width: 14 }, // Date
       { header: '', width: 14 }, // Day
       { header: '', width: 14 }, // Type
