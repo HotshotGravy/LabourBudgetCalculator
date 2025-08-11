@@ -874,14 +874,14 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode, onBackToWelco
     summaryRows.push(['Time and Expense Estimate', '', '']); // 1
     // 2-5: Project info
     summaryRows.push(['Customer:', customerToUse, '']); // 2
-    summaryRows.push(['Description:', projectDescription, '']); // 3
-    summaryRows.push(['Project Number:', projectNumber, '']); // 4
+    summaryRows.push(['Description:', projectDescription.trim() || 'Not Specified', '']); // 3
+    summaryRows.push(['Project Number:', projectNumber.trim() || 'Not Specified', '']); // 4
     summaryRows.push(['Number of Resources:', resources.length.toString(), '']); // 5
     // 6: merged, empty, very light gray
     summaryRows.push(['', '', '']); // 6
     // 7-9: Date info
-    summaryRows.push(['Start Date On Site:', earliestStartDate ? (earliestStartDate as dayjs.Dayjs).format('YYYY-MM-DD') : '', '']); // 7
-    summaryRows.push(['End Site Date:', latestEndDate ? (latestEndDate as dayjs.Dayjs).format('YYYY-MM-DD') : '', '']); // 8
+    summaryRows.push(['Start Date On Site:', earliestStartDate ? (earliestStartDate as dayjs.Dayjs).format('YYYY-MM-DD') : 'Not Specified', '']); // 7
+    summaryRows.push(['End Site Date:', latestEndDate ? (latestEndDate as dayjs.Dayjs).format('YYYY-MM-DD') : 'Not Specified', '']); // 8
     summaryRows.push(['Total Days:', projectTotals.totalDays.toString(), '']); // 9
     // 10-11: merged, empty, very light gray
     summaryRows.push(['', '', '']); // 10
