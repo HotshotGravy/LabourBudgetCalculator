@@ -909,7 +909,7 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode, onBackToWelco
     const workbook = new ExcelJS.Workbook();
     const ws = workbook.addWorksheet('Summary');
     ws.views = [{ showGridLines: false }];
-    ws.columns = [ { width: 28 }, { width: 22 }, { width: 18 } ];
+    ws.columns = [ { width: 40 }, { width: 22 }, { width: 18 } ];
     for (const row of summaryRows) ws.addRow(row);
 
     // Merges
