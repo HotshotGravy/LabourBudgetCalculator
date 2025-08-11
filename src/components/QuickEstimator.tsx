@@ -2167,7 +2167,23 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode, onBackToWelco
                                           opacity: 0.7 
                                         }}
                                       >
-                                        {startDate.add(day.dayNumber - 1, 'day').date()}
+                                        {(() => {
+                                          // Calculate the actual calendar date for this day
+                                          let actualDate;
+                                          if (currentResource.separateTravelTo) {
+                                            if (day.dayNumber === 1) {
+                                              // Day 1 is travel day - one day before start date
+                                              actualDate = startDate.subtract(1, 'day');
+                                            } else {
+                                              // Day 2+ are work days - offset by (dayNumber - 2) from start date
+                                              actualDate = startDate.add(day.dayNumber - 2, 'day');
+                                            }
+                                          } else {
+                                            // No separate travel day - offset by (dayNumber - 1) from start date
+                                            actualDate = startDate.add(day.dayNumber - 1, 'day');
+                                          }
+                                          return actualDate.date();
+                                        })()}
                                       </Typography>
                                     )}
                                     {day ? (
