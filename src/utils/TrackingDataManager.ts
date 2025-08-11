@@ -288,10 +288,27 @@ export class TrackingDataManager {
         // Calculate deltas (initially zero since actual = planned)
         const deltaValues: DayValues = this.calculateDelta(actualValues, plannedValues);
 
+        // Calculate the correct date based on separateTravelTo setting
+        let calculatedDate = '';
+        if (startDate) {
+          if (resource.separateTravelTo) {
+            if (day.dayNumber === 1) {
+              // Day 1 is travel day - one day before start date
+              calculatedDate = startDate.subtract(1, 'day').format('YYYY-MM-DD');
+            } else {
+              // Day 2+ are work days - offset by (dayNumber - 2) from start date
+              calculatedDate = startDate.add(day.dayNumber - 2, 'day').format('YYYY-MM-DD');
+            }
+          } else {
+            // No separate travel day - offset by (dayNumber - 1) from start date
+            calculatedDate = startDate.add(day.dayNumber - 1, 'day').format('YYYY-MM-DD');
+          }
+        }
+
         return {
           dayNumber: day.dayNumber, // Use the original day number from estimator
           dayOfWeek: day.dayOfWeek, // Use the day of week calculated by estimator
-          date: startDate ? startDate.add(day.dayNumber - 1, 'day').format('YYYY-MM-DD') : '',
+          date: calculatedDate,
           type: day.type, // Include the day type
           isHoldover: day.isHoldover, // Include holdover information
           planned: plannedValues,
