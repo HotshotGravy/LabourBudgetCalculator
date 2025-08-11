@@ -1131,7 +1131,7 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode, onBackToWelco
         resourceName,
         day.date || '',
         daysOfWeek[day.dayOfWeek] || '',
-        friendlyType({ type: day.type || 'WorkDay' } as any, new Map()),
+        getDayTypeDisplay(day.type, day.isHoldover),
         day.planned.regularLabour || 0,
         day.planned.overtimeLabour || 0,
         day.planned.premiumLabour || 0,
@@ -1255,6 +1255,18 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode, onBackToWelco
       case 'TravelFrom': return 'Travel From';
       case 'None': return 'None';
       default: return day.type;
+    }
+  };
+
+  // Helper to get day type display for Excel export
+  const getDayTypeDisplay = (type: string, isHoldover: boolean) => {
+    if (isHoldover) return 'Holdover';
+    switch (type) {
+      case 'WorkDay': return 'Work Day';
+      case 'TravelTo': return 'Travel To';
+      case 'TravelFrom': return 'Travel From';
+      case 'None': return 'None';
+      default: return type;
     }
   };
 

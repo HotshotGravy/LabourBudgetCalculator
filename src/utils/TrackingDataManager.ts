@@ -292,6 +292,8 @@ export class TrackingDataManager {
           dayNumber: day.dayNumber, // Use the original day number from estimator
           dayOfWeek: day.dayOfWeek, // Use the day of week calculated by estimator
           date: startDate ? startDate.add(day.dayNumber - 1, 'day').format('YYYY-MM-DD') : '',
+          type: day.type, // Include the day type
+          isHoldover: day.isHoldover, // Include holdover information
           planned: plannedValues,
           actual: actualValues,
           delta: deltaValues

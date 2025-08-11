@@ -16,6 +16,8 @@ export interface DayTrackingData {
   dayNumber: number;
   dayOfWeek: number; // 0=Sunday, 1=Monday, etc.
   date: string;
+  type: string; // Day type: 'WorkDay', 'TravelTo', 'TravelFrom', 'None'
+  isHoldover: boolean; // Whether this is a holdover day
   planned: DayValues;
   actual: DayValues;
   delta: DayValues;
