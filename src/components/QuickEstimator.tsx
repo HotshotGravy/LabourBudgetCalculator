@@ -873,7 +873,7 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode, onBackToWelco
     // 1. Header
     summaryRows.push(['Time and Expense Estimate', '', '']); // 1
     // 2-5: Project info
-    summaryRows.push(['Customer:', customer, '']); // 2
+    summaryRows.push(['Customer:', customerToUse, '']); // 2
     summaryRows.push(['Description:', projectDescription, '']); // 3
     summaryRows.push(['Project Number:', projectNumber, '']); // 4
     summaryRows.push(['Number of Resources:', resources.length.toString(), '']); // 5
