@@ -65,7 +65,6 @@ export interface ResourceData {
   technician: string;
   startDate: string | null;
   endDate: string | null;
-  selectedSheet: string;
   manualOverrides: Map<number, ManualDayOverride>;
   otBefore7After5: boolean;
 }
@@ -233,7 +232,7 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode, onBackToWelco
     updateCurrentResourceField('otBefore7After5', false);
     updateCurrentResourceField('startDate', null);
     updateCurrentResourceField('endDate', null);
-    updateCurrentResourceField('selectedSheet', rateSheets[0]?.name || '');
+    // Rate sheet is project-wide, not per-resource
     updateCurrentResourceField('manualOverrides', new Map());
     
     setResetAllDialogOpen(false);
@@ -376,7 +375,6 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode, onBackToWelco
       technician: '',
       startDate: null,
       endDate: null,
-      selectedSheet: rateSheets[0]?.name || '',
       manualOverrides: new Map(),
       otBefore7After5: false,
     }
@@ -425,7 +423,7 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode, onBackToWelco
       technician: '',
       startDate: copyOnlyRateSheet ? null : resources[copyFromResourceIndex].startDate,
       endDate: copyOnlyRateSheet ? null : resources[copyFromResourceIndex].endDate,
-      selectedSheet: copyOnlyRateSheet ? selectedSheet : resources[copyFromResourceIndex].selectedSheet,
+      // Rate sheet is project-wide, not per-resource
       manualOverrides: copyOnlyRateSheet ? new Map() : new Map(resources[copyFromResourceIndex].manualOverrides),
       otBefore7After5: false,
     };
@@ -809,7 +807,8 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode, onBackToWelco
       rateSheets,
       exportProjectData,
       startDate,
-      endDate
+      endDate,
+      selectedSheet
     );
 
     // Calculate project-wide totals from all resources
@@ -837,16 +836,16 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode, onBackToWelco
         projectTotals.totalTravelHours += dayTravelHours;
         projectTotals.totalDays++;
 
-        // Calculate costs using the resource's rate sheet
-        const resourceRateSheet = rateSheets.find(s => s.name === resources.find(r => r.id === resource.resourceId)?.selectedSheet) || rateSheets[0];
+        // Calculate costs using the project's rate sheet (same for all resources)
+        const projectRateSheet = rateSheets.find(s => s.name === selectedSheet) || rateSheets[0];
         const dayLabourCost = 
-          (day.planned.regularLabour || 0) * resourceRateSheet.regularLabourRate +
-          (day.planned.overtimeLabour || 0) * resourceRateSheet.overtimeLabourRate +
-          (day.planned.premiumLabour || 0) * resourceRateSheet.premiumLabourRate;
+          (day.planned.regularLabour || 0) * projectRateSheet.regularLabourRate +
+          (day.planned.overtimeLabour || 0) * projectRateSheet.overtimeLabourRate +
+          (day.planned.premiumLabour || 0) * projectRateSheet.premiumLabourRate;
         const dayTravelCost = 
-          (day.planned.regularTravel || 0) * resourceRateSheet.regularTravelRate +
-          (day.planned.overtimeTravel || 0) * resourceRateSheet.overtimeTravelRate +
-          (day.planned.premiumTravel || 0) * resourceRateSheet.premiumTravelRate;
+          (day.planned.regularTravel || 0) * projectRateSheet.regularTravelRate +
+          (day.planned.overtimeTravel || 0) * projectRateSheet.overtimeTravelRate +
+          (day.planned.premiumTravel || 0) * projectRateSheet.premiumTravelRate;
         
         projectTotals.totalLabourCost += dayLabourCost;
         projectTotals.totalTravelCost += dayTravelCost;
@@ -888,7 +887,7 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode, onBackToWelco
     summaryRows.push(['', '', '']); // 10
     summaryRows.push(['', '', '']); // 11
     // 12-15: Rates/options (label in A, value in B)
-    summaryRows.push(['Rates:', 'Multiple Rate Sheets', '']); // 12
+    summaryRows.push(['Rates:', selectedSheet, '']); // 12
     summaryRows.push(['Separate Travel Days:', 'See Daily Breakdown', '']); // 13
     summaryRows.push(['Travel Method to Site Area:', 'See Daily Breakdown', '']); // 14
     summaryRows.push(['Emergency Rates:', 'See Daily Breakdown', '']); // 15
@@ -1080,14 +1079,15 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode, onBackToWelco
       resourceRateSheet: any;
     }> = [];
 
+    // Use the project's rate sheet for all resources
+    const projectRateSheet = rateSheets.find(s => s.name === selectedSheet) || rateSheets[0];
+    
     trackingData.resources.forEach(resource => {
-      const resourceRateSheet = rateSheets.find(s => s.name === resources.find(r => r.id === resource.resourceId)?.selectedSheet) || rateSheets[0];
-      
       resource.days.forEach(day => {
         allDayDetails.push({
           resourceName: resource.resourceName,
           day,
-          resourceRateSheet
+          resourceRateSheet: projectRateSheet
         });
       });
     });
@@ -2299,9 +2299,10 @@ const QuickEstimator: React.FC<QuickEstimatorProps> = ({ darkMode, onBackToWelco
                         <Typography variant="subtitle1" sx={{ color: panelText, fontWeight: 600, mb: 1 }}>All Resources Total</Typography>
                         <Typography variant="h4" sx={{ color: darkMode ? '#4fc3f7' : '#1976d2', fontWeight: 700 }}>
                           ${resources.reduce((sum, resource) => {
-                            const resourceSheet = rateSheets.find(s => s.name === resource.selectedSheet) || rateSheets[0];
-                            const resourceCustomSheet = {
-                              ...resourceSheet,
+                            // Use the project's rate sheet for all resources
+      const projectRateSheet = rateSheets.find(s => s.name === selectedSheet) || rateSheets[0];
+                                                          const resourceCustomSheet = {
+                                ...projectRateSheet,
                               hotelCost: resource.hotelCost,
                               rentalCarRate: resource.rentalCarRate,
                               flightCost: resource.flightCost,

@@ -213,13 +213,17 @@ export class TrackingDataManager {
     rateSheets: RateSheet[],
     projectData: { projectNumber: string; customer: string; projectDescription: string; technician: string },
     startDate: dayjs.Dayjs | null,
-    endDate: dayjs.Dayjs | null
+    endDate: dayjs.Dayjs | null,
+    projectRateSheetName?: string
   ): TrackingData {
     const projectName = projectData.projectDescription.trim() || 'Support';
     const projectId = Date.now().toString();
 
     const resourceTrackingData: ResourceTrackingData[] = resources.map(resource => {
-      const rateSheet = rateSheets.find(s => s.name === resource.selectedSheet) || rateSheets[0];
+      // Use the project rate sheet if provided, otherwise fall back to first rate sheet
+      const rateSheet = projectRateSheetName 
+        ? rateSheets.find(s => s.name === projectRateSheetName) || rateSheets[0]
+        : rateSheets[0];
       const customSheet = {
         ...rateSheet,
         hotelCost: resource.hotelCost,
