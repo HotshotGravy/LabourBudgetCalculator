@@ -62,6 +62,8 @@ export class ExcelImportManager {
           
           // Map headers to expected column names
           const columnMap = this.mapHeaders(headers);
+          console.log('Headers found:', headers);
+          console.log('Column map:', columnMap);
           
           const parsedRows: ExcelRow[] = [];
           
@@ -69,15 +71,23 @@ export class ExcelImportManager {
             const row = rows[i];
             if (!row || row.length === 0) continue;
             
+            console.log(`Raw row ${i + 2}:`, row);
+            console.log(`Row length: ${row.length}`);
+            
             try {
               const parsedRow = this.parseRow(row, columnMap, i + 2); // +2 for header row and 1-based indexing
               if (parsedRow) {
                 parsedRows.push(parsedRow);
+                console.log(`Parsed row ${i + 2}:`, parsedRow);
+              } else {
+                console.log(`Skipped row ${i + 2} - missing essential data`);
               }
             } catch (error) {
               console.warn(`Error parsing row ${i + 2}:`, error);
             }
           }
+          
+          console.log(`Total parsed rows: ${parsedRows.length}`);
           
           resolve(parsedRows);
         } catch (error) {
@@ -99,9 +109,11 @@ export class ExcelImportManager {
     headers.forEach((header, index) => {
       const normalizedHeader = header?.toString().toLowerCase().trim();
       
+      console.log(`Header ${index}: "${header}" -> normalized: "${normalizedHeader}"`);
+      
       if (normalizedHeader.includes('charge id') || normalizedHeader.includes('chargeid')) {
         columnMap.chargeId = index;
-      } else if (normalizedHeader.includes('date')) {
+      } else if (normalizedHeader === 'date') {
         columnMap.date = index;
       } else if (normalizedHeader.includes('charge type') || normalizedHeader.includes('chargetype')) {
         columnMap.chargeType = index;
@@ -135,7 +147,19 @@ export class ExcelImportManager {
   private static parseRow(row: any[], columnMap: { [key: string]: number }, rowNumber: number): ExcelRow | null {
     const getValue = (key: string): string => {
       const index = columnMap[key];
-      return index !== undefined && row[index] !== undefined ? String(row[index]).trim() : '';
+      let value = index !== undefined && row[index] !== undefined ? String(row[index]).trim() : '';
+      
+      // Convert Excel date serial numbers to YYYY-MM-DD format
+      if (key === 'date' && value && !isNaN(Number(value)) && Number(value) > 1000) {
+        // Excel dates are days since January 1, 1900
+        const excelDate = Number(value);
+        const date = new Date((excelDate - 25569) * 86400 * 1000); // Convert to milliseconds
+        value = date.toISOString().split('T')[0]; // Get YYYY-MM-DD format
+        console.log(`Converted Excel date ${excelDate} to ${value}`);
+      }
+      
+      console.log(`getValue('${key}'): index=${index}, value="${value}"`);
+      return value;
     };
     
     const getNumber = (key: string): number => {
@@ -150,8 +174,16 @@ export class ExcelImportManager {
     const employee = getValue('employee');
     const item = getValue('item');
     
+    console.log(`Row ${rowNumber} values:`, { chargeId, date, chargeType, employee, item });
+    
     // Skip rows without essential data
     if (!date || !chargeType || !employee || !item) {
+      console.log(`Row ${rowNumber} missing:`, { 
+        date: !date, 
+        chargeType: !chargeType, 
+        employee: !employee, 
+        item: !item 
+      });
       return null;
     }
     
@@ -249,24 +281,40 @@ export class ExcelImportManager {
   ): { [resourceId: string]: { [date: string]: Partial<DayValues> } } {
     const updates: { [resourceId: string]: { [date: string]: Partial<DayValues> } } = {};
     
+    console.log('Mapping Excel data to updates...');
+    console.log('Excel rows:', excelRows);
+    
     // Get all resource names for fuzzy matching
     const resourceNames = trackingData.resources.map(r => r.resourceName);
+    console.log('Available resource names:', resourceNames);
     
     for (const row of excelRows) {
+      console.log(`Processing row for employee: ${row.employee}, date: ${row.date}`);
+      
       // Find matching resource
       const { match: resourceName, confidence } = this.findMatchingResource(row.employee, resourceNames);
+      console.log(`Resource match: ${resourceName} (confidence: ${confidence})`);
       
       if (!resourceName || confidence < 0.7) {
+        console.log(`Skipping row - no good resource match found`);
         continue; // Skip if no good match found
       }
       
       // Find the resource in tracking data
       const resource = trackingData.resources.find(r => r.resourceName === resourceName);
-      if (!resource) continue;
+      if (!resource) {
+        console.log(`Resource not found in tracking data: ${resourceName}`);
+        continue;
+      }
       
       // Check if date exists in tracking data
       const dayData = resource.days.find(d => d.date === row.date);
-      if (!dayData) continue;
+      if (!dayData) {
+        console.log(`Date not found in tracking data: ${row.date}`);
+        continue;
+      }
+      
+      console.log(`Found matching resource and date, processing updates...`);
       
       // Initialize updates for this resource and date if not exists
       if (!updates[resource.resourceId]) {
@@ -280,6 +328,7 @@ export class ExcelImportManager {
       this.mapRowToUpdates(row, updates[resource.resourceId][row.date], validationWarnings);
     }
     
+    console.log('Final updates:', updates);
     return updates;
   }
   

@@ -196,4 +196,135 @@ interface DayValues {
   carRental: number;
   hotel: number;
 }
+```
+
+---
+
+# Customer/Resource Database Enhancement
+
+## Overview
+Enhancement to add customer and resource management with travel data auto-fill capabilities. This system will store historical travel information to reduce manual data entry and improve accuracy.
+
+## Data Structure
+
+### Database Schema
+- **SQLite database** with separate tables for customers, resources, and travel data
+- **Travel data** stored as separate records per travel method (driving vs. flight)
+- Each customer-resource combination can have multiple travel method records
+
+### Data Models
+```typescript
+interface Customer {
+  id: string;
+  name: string;
+  coordinates?: { lat: number, lng: number };
+  defaultHotelCost?: number;
+}
+
+interface Resource {
+  id: string;
+  name: string;
+  coordinates?: { lat: number, lng: number };
+}
+
+interface TravelData {
+  id: string;
+  customerId: string;
+  resourceId: string;
+  travelMethod: 'driving' | 'flight' | 'flight+rental';
+  drivingDistance?: number;
+  drivingTime?: number;
+  flightCost?: number;
+  flightTime?: number;
+  airportMileage?: number;
+  rentalAgencyMileage?: number;
+  hotelCost?: number;
+  lastUsed: Date;
+  usageCount: number;
+}
+```
+
+## User Flow
+
+### 1. Selection Process
+- User selects customer OR resource from dropdown
+- When user selects the SECOND one (customer OR resource), prompt: "Will this resource be driving or flying to this customer?"
+- If travel data exists for that combination + method, auto-fill the fields
+- If no data exists, user enters manually as normal
+
+### 2. Auto-fill Fields
+- `travelDistance` (driving distance)
+- `travelTime` (total travel time including flight)
+- `flightCost`
+- `hotelCost`
+- `dailyTravelDistance` (local driving at destination)
+- `dailyTravelTime` (local driving time)
+
+### 3. Save Prompts
+- **Primary**: When user saves/closes/clicks Track, prompt to save any new travel data for all resources
+- **Secondary**: When both customer and resource are selected, ask if user wants to save travel data
+- **Scope**: Only affects first and last days of projects (travel to/from site)
+
+## Technical Implementation
+
+### Database Management
+- **Storage**: SQLite database file alongside existing data
+- **Validation**: Warn users for distances > 5000km or travel times > 2 weeks
+- **Missing Data**: Allow users to ignore warnings but notify of incomplete data
+- **Data Quality**: No auto-fill unless complete data exists
+
+### Travel Method Handling
+- **Driving**: distance, time, mileage
+- **Flight**: flight cost, flight time, airport mileage, rental car details if needed
+- **Hotel costs** associated with customer location
+- **Daily travel** (local driving at destination) separate from travel-to-site
+
+### UI Integration
+- **Dropdown Lists**: Replace text fields for customer/resource selection
+- **No Override Indicators**: Simple auto-fill without visual indicators
+- **Database Management**: Button in QuickEstimator UI to access travel data management
+- **Simple Prompts**: Non-intrusive save prompts
+
+## Implementation Phases
+
+### Phase 1: Basic Lists
+- Add customer/resource dropdowns
+- Manual entry for travel data
+- Simple "save for future" prompt
+
+### Phase 2: Auto-fill System
+- Database integration
+- Auto-fill logic
+- Travel method selection
+
+### Phase 3: Management Interface
+- Dedicated database management window
+- Bulk operations
+- Data validation
+
+### Phase 4: Advanced Features
+- Coordinate-based distance calculation
+- Address geocoding
+- Usage analytics
+
+## Data Validation Rules
+- **Distance Limit**: Maximum 5000km
+- **Time Limit**: Maximum 2 weeks travel time
+- **Warnings**: Show warnings when limits exceeded
+- **Missing Data**: Warn but allow users to ignore
+
+## File Structure
+```
+src/
+├── components/
+│   ├── QuickEstimator.tsx (modified)
+│   ├── CustomerResourceManager.tsx (new)
+│   └── TravelDataDialog.tsx (new)
+├── utils/
+│   ├── CustomerResourceDatabase.ts (new)
+│   └── TravelDataManager.ts (new)
+└── models/
+    ├── Customer.ts (new)
+    ├── Resource.ts (new)
+    └── TravelData.ts (new)
 ``` 
